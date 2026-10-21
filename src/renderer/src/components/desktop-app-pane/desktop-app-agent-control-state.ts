@@ -4,13 +4,16 @@ import type { Point } from './desktop-app-point-mapping'
 // Why: agents think between actions for seconds at a time; dropping the indicator on every gap
 // would flash the border, so control stays shown until the agent has been quiet this long.
 export const AGENT_CONTROL_IDLE_MS = 20_000
+// Why: a lost `end` (renderer reload, crashed runtime) must not pin the border on forever.
+export const AGENT_ACTION_MAX_MS = 120_000
 
 export type DesktopAppAgentControlState = {
   controlling: boolean
   stopped: boolean
   // Last known agent cursor position, in window points.
   cursor: Point | null
-  inFlight: number
+  // Actions that started on this pane and have not ended, by activity id -> start time.
+  inFlight: Readonly<Record<string, number>>
   lastActivityAt: number
 }
 
@@ -18,12 +21,14 @@ export const INITIAL_AGENT_CONTROL_STATE: DesktopAppAgentControlState = {
   controlling: false,
   stopped: false,
   cursor: null,
-  inFlight: 0,
+  inFlight: {},
   lastActivityAt: 0
 }
 
 export type DesktopAppAgentControlEvent =
-  | { type: 'activity'; activity: DesktopAppAgentActivity }
+  // `targetsPane`: whether this event alone names the pane's app; an `end` whose start did still
+  // closes it, since the end can carry a resolved pid or window the start did not know yet.
+  | { type: 'activity'; activity: DesktopAppAgentActivity; targetsPane: boolean }
   | { type: 'idle'; now: number }
   | { type: 'stop' }
   | { type: 'allow' }
@@ -35,31 +40,21 @@ export function reduceAgentControl(
   event: DesktopAppAgentControlEvent
 ): DesktopAppAgentControlState {
   switch (event.type) {
-    case 'activity': {
-      if (state.stopped) {
-        return state
+    case 'activity':
+      return reduceActivity(state, event.activity, event.targetsPane)
+    case 'idle': {
+      const inFlight = dropExpired(state.inFlight, event.now)
+      const next = inFlight === state.inFlight ? state : { ...state, inFlight }
+      if (!next.controlling || Object.keys(inFlight).length > 0) {
+        return next
       }
-      const { activity } = event
-      const inFlight =
-        activity.phase === 'start' ? state.inFlight + 1 : Math.max(0, state.inFlight - 1)
-      return {
-        ...state,
-        controlling: true,
-        cursor: activity.point ?? state.cursor,
-        inFlight,
-        lastActivityAt: activity.at
+      if (event.now - next.lastActivityAt < AGENT_CONTROL_IDLE_MS) {
+        return next
       }
+      return { ...next, controlling: false, cursor: null }
     }
-    case 'idle':
-      if (!state.controlling || state.inFlight > 0) {
-        return state
-      }
-      if (event.now - state.lastActivityAt < AGENT_CONTROL_IDLE_MS) {
-        return state
-      }
-      return { ...state, controlling: false, cursor: null }
     case 'stop':
-      return { ...state, controlling: false, stopped: true, cursor: null, inFlight: 0 }
+      return { ...state, controlling: false, stopped: true, cursor: null, inFlight: {} }
     case 'allow':
       return { ...state, stopped: false }
     case 'hydrateStopped':
@@ -67,4 +62,44 @@ export function reduceAgentControl(
     case 'reset':
       return INITIAL_AGENT_CONTROL_STATE
   }
+}
+
+function reduceActivity(
+  state: DesktopAppAgentControlState,
+  activity: DesktopAppAgentActivity,
+  targetsPane: boolean
+): DesktopAppAgentControlState {
+  if (state.stopped) {
+    return state
+  }
+  const { activityId } = activity
+  const startedHere = Object.hasOwn(state.inFlight, activityId)
+  if (!targetsPane && !startedHere) {
+    return state
+  }
+  let inFlight = state.inFlight
+  if (activity.phase === 'start') {
+    inFlight = { ...inFlight, [activityId]: activity.at }
+  } else if (startedHere) {
+    const { [activityId]: _ended, ...rest } = inFlight
+    inFlight = rest
+  }
+  return {
+    ...state,
+    controlling: true,
+    // Why: an end that resolved to another window still closes its action, but its point is
+    // in that window's coordinates, not this pane's.
+    cursor: targetsPane ? (activity.point ?? state.cursor) : state.cursor,
+    inFlight,
+    lastActivityAt: activity.at
+  }
+}
+
+function dropExpired(
+  inFlight: Readonly<Record<string, number>>,
+  now: number
+): Readonly<Record<string, number>> {
+  const entries = Object.entries(inFlight)
+  const live = entries.filter(([, startedAt]) => now - startedAt < AGENT_ACTION_MAX_MS)
+  return live.length === entries.length ? inFlight : Object.fromEntries(live)
 }
