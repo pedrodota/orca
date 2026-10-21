@@ -2,7 +2,7 @@
 // attaches to it by id); main records each open and close under the window's ids, so a window save
 // no longer teaches main a simulator tab. Nothing to undo on any answer.
 
-import type { Tab } from '../../../shared/tab-types'
+import { isLiveSurfaceContentType, type Tab } from '../../../shared/tab-types'
 import type { AppState } from '@/store/types'
 import { recordLayoutApply } from '@/runtime/layout-apply-send'
 import { drawnTabPlacement } from '@/runtime/layout-owner-drawn-tab-placement'
@@ -12,7 +12,7 @@ type SimulatorTabState = Parameters<typeof recordLayoutApply>[0] &
 
 /** A simulator tab the window just drew, placed where the window drew it. */
 export function recordOpenedSimulatorTabInLayoutOwner(state: SimulatorTabState, tab: Tab): void {
-  if (tab.contentType !== 'simulator') {
+  if (!isLiveSurfaceContentType(tab.contentType)) {
     return
   }
   recordLayoutApply(state, tab.worktreeId, {
@@ -29,7 +29,7 @@ export function recordClosedSimulatorTabInLayoutOwner(
   state: SimulatorTabState,
   tab: Pick<Tab, 'id' | 'worktreeId' | 'contentType'>
 ): void {
-  if (tab.contentType === 'simulator') {
+  if (isLiveSurfaceContentType(tab.contentType)) {
     recordLayoutApply(state, tab.worktreeId, { type: 'closeTabs', tabIds: [tab.id] })
   }
 }

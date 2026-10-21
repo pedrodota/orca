@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { workspaceVisibleTabTypeSchema } from './workspace-session-tab-type-schema'
 
 export const TAB_CLOSE_TELEMETRY_SAMPLE_RATE = 0.1
 
@@ -7,7 +8,7 @@ export const TAB_CLOSE_TELEMETRY_SAMPLE_RATE = 0.1
 export const tabsDirectionalCloseRequestedSchema = z
   .object({
     direction: z.enum(['left', 'right']),
-    tab_type: z.enum(['terminal', 'editor', 'agent-session', 'browser', 'simulator']),
+    tab_type: workspaceVisibleTabTypeSchema,
     surface: z.enum(['workspace', 'floating']),
     eligible_tab_count: z.number().int().min(0),
     sample_rate: z.literal(TAB_CLOSE_TELEMETRY_SAMPLE_RATE).optional()

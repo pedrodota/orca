@@ -42,11 +42,21 @@ export function toVisibleTabType(contentType: TabContentType): WorkspaceVisibleT
     contentType === 'agent-session' ||
     contentType === 'browser' ||
     contentType === 'terminal' ||
-    contentType === 'simulator'
+    isLiveSurfaceContentType(contentType)
   ) {
     return contentType
   }
   return 'editor'
+}
+
+/** Tabs drawn by a pane overlay over the group body (today the mobile emulator), not by an editor. */
+export const LIVE_SURFACE_CONTENT_TYPES = ['simulator'] as const
+export type LiveSurfaceContentType = (typeof LIVE_SURFACE_CONTENT_TYPES)[number]
+
+export function isLiveSurfaceContentType(
+  contentType: TabContentType | undefined | null
+): contentType is LiveSurfaceContentType {
+  return contentType === 'simulator'
 }
 
 export type Tab = {
