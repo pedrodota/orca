@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { DesktopAppInput, DesktopAppWindow } from '../../../../shared/desktop-app-types'
 import { errorMessage } from '../../../../shared/error-message'
 import { normalizeWheelDelta } from '../emulator-pane/emulator-screen-gesture'
@@ -18,6 +18,17 @@ export function useDesktopAppInput(
   const pointerStart = useRef<PointerStart | null>(null)
   const pendingScroll = useRef<{ point: Point; deltaX: number; deltaY: number } | null>(null)
   const scrollFrame = useRef(0)
+
+  useEffect(() => {
+    const frame = scrollFrame
+    const pending = pendingScroll
+    return () => {
+      // Why: a scroll queued for the next frame must not reach the window after the view is gone.
+      cancelAnimationFrame(frame.current)
+      frame.current = 0
+      pending.current = null
+    }
+  }, [])
 
   const send = useCallback(
     (input: DesktopAppInput) => {
