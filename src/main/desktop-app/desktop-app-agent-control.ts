@@ -156,9 +156,10 @@ function trimLikeNative(selector: string): string {
   return selector.replace(NATIVE_WHITESPACE_EDGES, '')
 }
 
-// Case-insensitive, accent-sensitive, like `caseInsensitiveCompare` in main.swift.
+// Case-insensitive, accent-sensitive, like `caseInsensitiveCompare` in main.swift. Fixed 'und'
+// locale so the match never depends on the user's system language.
 function sameName(name: string | null | undefined, selector: string): boolean {
-  return name != null && name.localeCompare(selector, undefined, { sensitivity: 'accent' }) === 0
+  return name != null && name.localeCompare(selector, 'und', { sensitivity: 'accent' }) === 0
 }
 
 // Same grammar as parsePid in main.swift: lowercase prefix, then an Int32 (optional sign) above 0.
