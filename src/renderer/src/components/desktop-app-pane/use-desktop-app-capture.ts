@@ -32,8 +32,9 @@ export function useDesktopAppCapture(
 
   useEffect(() => {
     const api = window.api?.desktopApp
+    // Why: the previous window's stopped stream and error must not show (or size clicks) for the next.
+    setState({ stream: null, error: null })
     if (!isActive || windowId === null || pid === null || !api) {
-      setState({ stream: null, error: null })
       return
     }
     let cancelled = false

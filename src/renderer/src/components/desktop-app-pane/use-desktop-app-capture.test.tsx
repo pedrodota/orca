@@ -51,4 +51,16 @@ describe('useDesktopAppCapture', () => {
     expect(releaseCapture).toHaveBeenCalledTimes(1)
     expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled()
   })
+
+  it('drops the previous stream as soon as the target changes', async () => {
+    const { result, rerender } = renderHook(
+      ({ windowId }) => useDesktopAppCapture({ windowId, pid: 42 }, true),
+      { initialProps: { windowId: 1 } }
+    )
+    await waitFor(() => expect(result.current.stream).not.toBeNull())
+    prepareCapture.mockImplementationOnce(() => new Promise(() => undefined))
+    rerender({ windowId: 2 })
+    expect(result.current.stream).toBeNull()
+    expect(releaseCapture).toHaveBeenCalledWith({ windowId: 1, pid: 42 })
+  })
 })
