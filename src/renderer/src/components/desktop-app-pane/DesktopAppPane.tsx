@@ -55,9 +55,9 @@ export default function DesktopAppPane({ tab, isActive }: DesktopAppPaneProps): 
           <div className="flex w-full max-w-md flex-col gap-1">
             {windows.windows.map((w) => (
               <button
-                key={w.windowId}
+                key={`${w.pid}:${w.windowId}`}
                 type="button"
-                onClick={() => windows.select(w.windowId)}
+                onClick={() => windows.select(w)}
                 className="truncate rounded-md px-3 py-2 text-left text-xs hover:bg-accent hover:text-accent-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
               >
                 {windowLabel(w)}

@@ -1,4 +1,4 @@
-import type { DesktopAppWindow } from '../../../../shared/desktop-app-types'
+import type { DesktopAppTarget, DesktopAppWindow } from '../../../../shared/desktop-app-types'
 
 // The chosen window per tab. Window ids do not survive an app relaunch, so a restore re-finds
 // the window by app and title.
@@ -33,11 +33,19 @@ export function findRememberedWindow(
   remembered: RememberedDesktopAppTarget
 ): DesktopAppWindow | null {
   return (
-    windows.find((w) => w.windowId === remembered.windowId && w.pid === remembered.pid) ??
+    findExactWindow(windows, remembered) ??
     windows.find((w) => w.appName === remembered.appName && w.title === remembered.title) ??
     windows.find((w) => w.appName === remembered.appName) ??
     null
   )
+}
+
+/** The listed window with exactly this pid and window id; never a look-alike. */
+export function findExactWindow(
+  windows: readonly DesktopAppWindow[],
+  target: DesktopAppTarget
+): DesktopAppWindow | null {
+  return windows.find((w) => w.windowId === target.windowId && w.pid === target.pid) ?? null
 }
 
 function isRememberedTarget(value: unknown): value is RememberedDesktopAppTarget {

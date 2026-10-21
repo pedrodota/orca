@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DesktopAppWindow } from '../../../../shared/desktop-app-types'
+import type { DesktopAppTarget, DesktopAppWindow } from '../../../../shared/desktop-app-types'
 import { errorMessage } from '../../../../shared/error-message'
 import {
+  findExactWindow,
   findRememberedWindow,
   readRememberedTarget,
   writeRememberedTarget
@@ -16,7 +17,7 @@ export type DesktopAppWindowsState = {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
-  select: (windowId: number) => void
+  select: (target: DesktopAppTarget) => void
 }
 
 export function useDesktopAppWindows(tabId: string, isActive: boolean): DesktopAppWindowsState {
@@ -24,6 +25,8 @@ export function useDesktopAppWindows(tabId: string, isActive: boolean): DesktopA
   const [selected, setSelected] = useState<DesktopAppWindow | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The window the user chose (or a restore resolved to); only this exact pid + window id is shown.
+  const chosen = useRef<DesktopAppTarget | null>(null)
   const restoreAttempted = useRef(false)
 
   const refresh = useCallback(async () => {
@@ -32,18 +35,20 @@ export function useDesktopAppWindows(tabId: string, isActive: boolean): DesktopA
       const next = await window.api.desktopApp.listWindows()
       setWindows(next)
       setError(null)
-      setSelected((current) => {
-        if (current) {
-          // Why: a chosen window that closed must not hand the user's input to another window.
-          return next.find((w) => w.windowId === current.windowId) ?? null
-        }
-        if (restoreAttempted.current) {
-          return null
-        }
+      if (!chosen.current && !restoreAttempted.current) {
         restoreAttempted.current = true
         const remembered = readRememberedTarget(tabId)
-        return remembered ? findRememberedWindow(next, remembered) : null
-      })
+        // Why: ids do not survive an app relaunch, so a restore may settle on the same app's
+        // window; from then on that exact window is the choice.
+        const restored = remembered ? findRememberedWindow(next, remembered) : null
+        if (restored) {
+          chosen.current = { windowId: restored.windowId, pid: restored.pid }
+          writeRememberedTarget(tabId, rememberedTarget(restored))
+        }
+      }
+      // Why: a chosen window that is minimized or hidden drops out of the list. It
+      // comes back when listed again, and input never moves to a different window meanwhile.
+      setSelected(chosen.current ? findExactWindow(next, chosen.current) : null)
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -61,22 +66,21 @@ export function useDesktopAppWindows(tabId: string, isActive: boolean): DesktopA
   }, [isActive, refresh])
 
   const select = useCallback(
-    (windowId: number) => {
-      const next = windows.find((w) => w.windowId === windowId)
+    (target: DesktopAppTarget) => {
+      const next = findExactWindow(windows, target)
       if (!next) {
         return
       }
+      chosen.current = { windowId: next.windowId, pid: next.pid }
       setSelected(next)
-      writeRememberedTarget(tabId, {
-        windowId: next.windowId,
-        pid: next.pid,
-        appName: next.appName,
-        bundleId: next.bundleId,
-        title: next.title
-      })
+      writeRememberedTarget(tabId, rememberedTarget(next))
     },
     [tabId, windows]
   )
 
   return { windows, selected, loading, error, refresh, select }
+}
+
+function rememberedTarget({ windowId, pid, appName, bundleId, title }: DesktopAppWindow) {
+  return { windowId, pid, appName, bundleId, title }
 }

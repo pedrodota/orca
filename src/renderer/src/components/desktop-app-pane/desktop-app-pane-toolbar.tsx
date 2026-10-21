@@ -17,7 +17,7 @@ type DesktopAppPaneToolbarProps = {
   // Null hides the badge: no window picked, or capture failed and the error banner explains why.
   captureStatus: 'live' | 'connecting' | null
   loading: boolean
-  onSelectWindow: (windowId: number) => void
+  onSelectWindow: (window: DesktopAppWindow) => void
   onRefresh: () => void
 }
 
@@ -25,6 +25,11 @@ export function windowLabel(window: DesktopAppWindow): string {
   return window.title && window.title !== window.appName
     ? `${window.appName} — ${window.title}`
     : window.appName
+}
+
+// Why: window ids are only unique per system snapshot; the pid pins the window the user picked.
+function windowKey(window: DesktopAppWindow): string {
+  return `${window.pid}:${window.windowId}`
 }
 
 export function DesktopAppPaneToolbar({
@@ -61,8 +66,13 @@ export function DesktopAppPaneToolbar({
       ) : null}
       <div className="flex-1" />
       <Select
-        value={selected ? String(selected.windowId) : ''}
-        onValueChange={(value) => onSelectWindow(Number(value))}
+        value={selected ? windowKey(selected) : ''}
+        onValueChange={(value) => {
+          const picked = windows.find((w) => windowKey(w) === value)
+          if (picked) {
+            onSelectWindow(picked)
+          }
+        }}
         disabled={windows.length === 0}
       >
         <SelectTrigger className="h-7 w-[220px]">
@@ -75,7 +85,7 @@ export function DesktopAppPaneToolbar({
         </SelectTrigger>
         <SelectContent position="popper" side="bottom" align="end" sideOffset={4}>
           {windows.map((w) => (
-            <SelectItem key={w.windowId} value={String(w.windowId)}>
+            <SelectItem key={windowKey(w)} value={windowKey(w)}>
               {windowLabel(w)}
             </SelectItem>
           ))}
