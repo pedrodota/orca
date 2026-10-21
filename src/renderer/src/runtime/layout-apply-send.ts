@@ -11,6 +11,7 @@ import { releaseLayoutApplyHolds } from '@/runtime/layout-apply-hold-release'
 import type { SleepingAgentSessionRecord } from '../../../shared/agent-session-resume'
 import type { SplitRatioIntent } from '../../../shared/workspace-layout/split-ratio-intents'
 import type { PaneSide } from '../../../shared/workspace-layout/terminal-pane-tree'
+import type { LiveSurfaceContentType } from '../../../shared/tab-types'
 import type { LayoutEditorFile } from '../../../shared/workspace-layout/workspace-layout-model'
 import type { LayoutEditorView } from '../../../shared/workspace-layout/layout-editor-view'
 import type { EditorTabContentType } from '@/store/slices/editor/tabs/editor-tab-content-type'
@@ -112,7 +113,7 @@ export type WindowLayoutCommand =
   | {
       type: 'openSimulatorTab'
       tabId: string
-      kind?: 'simulator' | 'desktop-app'
+      kind?: LiveSurfaceContentType
       groupId: string
       afterTabId?: string
       index?: number

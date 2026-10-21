@@ -8,7 +8,7 @@ import type { LiveTerminalAdoption } from './workspace-layout-terminal-adoption'
 import type { SleepingAgentSessionRecord } from '../agent-session-resume'
 import type { AgentType } from '../agent-status-types'
 import type { AiVaultSessionTitle } from '../ai-vault-session-title'
-import type { TabContentType, TabGroupLayoutNode } from '../tab-types'
+import type { LiveSurfaceContentType, TabContentType, TabGroupLayoutNode } from '../tab-types'
 import type {
   TerminalGrid,
   TerminalPaneLayoutNode,
@@ -162,7 +162,7 @@ export type LayoutCommand =
       /** The window's id for the tab it drew; also the tab's entity. */
       tabId: string
       /** Which live-surface tab; absent means 'simulator' (older windows). */
-      kind?: 'simulator' | 'desktop-app'
+      kind?: LiveSurfaceContentType
       groupId?: string
       /** Placement in the group: after this tab, else at this index, else at its end. */
       afterTabId?: string
