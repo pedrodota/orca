@@ -51,6 +51,12 @@ describe('findBlockedDesktopApp', () => {
     expect(findBlockedDesktopApp(null)).toBeNull()
   })
 
+  it('trims the same edge characters as the native helper, including U+0085', () => {
+    blockDesktopAppAgent(PEPPER)
+    expect(findBlockedDesktopApp('\u0085pid:4242\u2028')).toEqual(PEPPER)
+    expect(findBlockedDesktopApp('\u00a0PEPPER\t')).toEqual(PEPPER)
+  })
+
   it('stops matching once the app is allowed again', () => {
     blockDesktopAppAgent(PEPPER)
     allowDesktopAppAgent(PEPPER.pid)

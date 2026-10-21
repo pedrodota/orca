@@ -39,11 +39,10 @@ export function findBlockedDesktopApp(selector: string | null): DesktopAppAgentB
   if (!selector) {
     return null
   }
-  const trimmed = selector.trim()
+  const trimmed = trimLikeNative(selector)
   const pid = parsePidSelector(trimmed)
-  const lowered = trimmed.toLowerCase()
   for (const block of blockedApps.values()) {
-    if (pid !== null ? block.pid === pid : matchesAppName(block, lowered)) {
+    if (pid !== null ? block.pid === pid : matchesAppName(block, trimmed)) {
       return block
     }
   }
@@ -52,15 +51,13 @@ export function findBlockedDesktopApp(selector: string | null): DesktopAppAgentB
 
 /** The app this selector resolves to with the native provider's own rules (resolveApp in main.swift). */
 export function resolveSelectorPid(selector: string, apps: ComputerAppInfo[]): number | null {
-  const trimmed = selector.trim()
+  const trimmed = trimLikeNative(selector)
   const pid = parsePidSelector(trimmed)
   if (pid !== null) {
     return pid
   }
-  const lowered = trimmed.toLowerCase()
   const app = apps.find(
-    (candidate) =>
-      candidate.name.toLowerCase() === lowered || candidate.bundleId?.toLowerCase() === lowered
+    (candidate) => sameName(candidate.name, trimmed) || sameName(candidate.bundleId, trimmed)
   )
   return app?.pid ?? null
 }
@@ -98,7 +95,7 @@ export async function runComputerActionWithActivity(
     )
   }
   const activityId = randomUUID()
-  const startPid = appSelector ? parsePidSelector(appSelector.trim()) : null
+  const startPid = appSelector ? parsePidSelector(trimLikeNative(appSelector)) : null
   const base = { activityId, method, appSelector }
   emit({
     ...base,
@@ -147,8 +144,21 @@ function emit(activity: DesktopAppAgentActivity): void {
   }
 }
 
-function matchesAppName(block: DesktopAppAgentBlock, lowered: string): boolean {
-  return block.appName.toLowerCase() === lowered || block.bundleId?.toLowerCase() === lowered
+function matchesAppName(block: DesktopAppAgentBlock, selector: string): boolean {
+  return sameName(block.appName, selector) || sameName(block.bundleId, selector)
+}
+
+// Why: String.trim() misses U+0085, which Swift's `.whitespacesAndNewlines` strips, so a selector
+// like "\u0085pid:5" would otherwise read as an unknown app here and as pid 5 in the helper.
+const NATIVE_WHITESPACE_EDGES = /^[\p{Z}\t-\r\u0085]+|[\p{Z}\t-\r\u0085]+$/gu
+
+function trimLikeNative(selector: string): string {
+  return selector.replace(NATIVE_WHITESPACE_EDGES, '')
+}
+
+// Case-insensitive, accent-sensitive, like `caseInsensitiveCompare` in main.swift.
+function sameName(name: string | null | undefined, selector: string): boolean {
+  return name != null && name.localeCompare(selector, undefined, { sensitivity: 'accent' }) === 0
 }
 
 // Same grammar as parsePid in main.swift: lowercase prefix, then an Int32 (optional sign) above 0.
