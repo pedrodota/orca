@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { parseSendInputArgs, parseTargetArgs } from './desktop-app-ipc-schema'
+import {
+  parseAgentBlockArgs,
+  parsePidArgs,
+  parseSendInputArgs,
+  parseTargetArgs
+} from './desktop-app-ipc-schema'
 
 describe('desktop app IPC argument parsing', () => {
   it('accepts a window target and rejects ids that are not positive integers', () => {
@@ -26,5 +31,12 @@ describe('desktop app IPC argument parsing', () => {
     expect(() =>
       parseSendInputArgs({ ...target, input: { kind: 'shell', cmd: 'ls' } }, 'c')
     ).toThrow()
+  })
+
+  it('validates the agent block and pid payloads', () => {
+    expect(parseAgentBlockArgs({ pid: 3, appName: 'Slack', bundleId: null }, 'c').pid).toBe(3)
+    expect(() => parseAgentBlockArgs({ pid: 3, appName: 'Slack' }, 'c')).toThrow()
+    expect(parsePidArgs({ pid: 9 }, 'c')).toEqual({ pid: 9 })
+    expect(() => parsePidArgs({ pid: -1 }, 'c')).toThrow()
   })
 })

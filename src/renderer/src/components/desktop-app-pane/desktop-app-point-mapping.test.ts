@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { mapElementPointToWindowPoint } from './desktop-app-point-mapping'
+import {
+  mapElementPointToWindowPoint,
+  mapWindowPointToElementPoint
+} from './desktop-app-point-mapping'
 
 describe('desktop app point mapping', () => {
   // A 1280x1016-point window captured at 2x, shown in a 800x800 pane.
@@ -7,9 +10,12 @@ describe('desktop app point mapping', () => {
   const media = { width: 2560, height: 2032 }
   const windowSize = { width: 1280, height: 1016 }
 
-  it('maps pane points to window points', () => {
+  it('maps pane points to window points and back', () => {
     const point = mapElementPointToWindowPoint({ x: 400, y: 400 }, box, media, windowSize)
     expect(point).toEqual({ x: 640, y: 508 })
+    const back = mapWindowPointToElementPoint(point!, box, media, windowSize)
+    expect(back!.x).toBeCloseTo(400)
+    expect(back!.y).toBeCloseTo(400)
   })
 
   it('ignores clicks in the letterbox bars', () => {

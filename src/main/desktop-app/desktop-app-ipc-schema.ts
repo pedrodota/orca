@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import type { DesktopAppInput, DesktopAppTarget } from '../../shared/desktop-app-types'
+import type {
+  DesktopAppAgentBlock,
+  DesktopAppInput,
+  DesktopAppTarget
+} from '../../shared/desktop-app-types'
 
 // Why: the preload hands these straight from the renderer; they are parsed here because input
 // injection reaches other apps and TypeScript types do not exist at the IPC boundary.
@@ -28,6 +32,12 @@ const inputSchema: z.ZodType<DesktopAppInput> = z.discriminatedUnion('kind', [
 
 const sendInputSchema = targetSchema.extend({ input: inputSchema })
 
+const agentBlockSchema = z.object({
+  pid: idSchema,
+  appName: z.string().max(256),
+  bundleId: z.string().max(256).nullable()
+})
+
 function parseArgs<T>(schema: z.ZodType<T>, value: unknown, channel: string): T {
   const parsed = schema.safeParse(value)
   if (!parsed.success) {
@@ -45,4 +55,12 @@ export function parseSendInputArgs(
   channel: string
 ): DesktopAppTarget & { input: DesktopAppInput } {
   return parseArgs(sendInputSchema, value, channel)
+}
+
+export function parseAgentBlockArgs(value: unknown, channel: string): DesktopAppAgentBlock {
+  return parseArgs(agentBlockSchema, value, channel)
+}
+
+export function parsePidArgs(value: unknown, channel: string): { pid: number } {
+  return parseArgs(z.object({ pid: idSchema }), value, channel)
 }

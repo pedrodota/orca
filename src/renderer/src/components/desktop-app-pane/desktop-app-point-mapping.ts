@@ -1,8 +1,11 @@
 // The captured window is drawn with object-fit: contain, so a point maps through the letterboxed
 // content rect, then from video pixels to window points (Retina capture is 2x the window size).
-import { mapClientPointToSimulatorScreen } from '../emulator-pane/emulator-screen-gesture'
+import {
+  mapClientPointToSimulatorScreen,
+  resolveSimulatorScreenContentRect
+} from '../emulator-pane/emulator-screen-gesture'
 
-type Size = { width: number; height: number }
+export type Size = { width: number; height: number }
 export type Point = { x: number; y: number }
 
 function boxRect(box: Size) {
@@ -31,6 +34,23 @@ export function mapElementPointToWindowPoint(
   return normalized
     ? { x: round1(normalized.x * windowSize.width), y: round1(normalized.y * windowSize.height) }
     : null
+}
+
+/** Window points → a point relative to the video element's box (where the agent cursor is drawn). */
+export function mapWindowPointToElementPoint(
+  point: Point,
+  box: Size,
+  media: Size,
+  windowSize: Size
+): Point | null {
+  if (!hasArea(box) || !hasArea(media) || !hasArea(windowSize)) {
+    return null
+  }
+  const content = resolveSimulatorScreenContentRect(boxRect(box), media)
+  return {
+    x: content.left + (point.x / windowSize.width) * content.width,
+    y: content.top + (point.y / windowSize.height) * content.height
+  }
 }
 
 function round1(value: number): number {

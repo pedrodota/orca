@@ -365,6 +365,17 @@
           "92a7017987": "sending"
         }
       },
+      "desktop": {
+        "app": {
+          "pane": {
+            "DesktopAppAgentOverlay": {
+              "371b67dea5": "Stop Claude",
+              "6ae3316ee2": "Claude was stopped for this app",
+              "db20d7f6de": "Claude is controlling this app"
+            }
+          }
+        }
+      },
       "editor": {
         "CombinedDiffFileTree": {
           "d5ac717d65": "uncommitted"

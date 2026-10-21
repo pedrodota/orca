@@ -44,3 +44,24 @@ export type DesktopAppCaptureSource = {
   // Electron desktopCapturer id (`window:<CGWindowID>:0`) armed for the next getDisplayMedia call.
   sourceId: string
 }
+
+// One computer-use action an agent ran against a desktop app, broadcast to every renderer.
+export type DesktopAppAgentActivity = {
+  phase: 'start' | 'end'
+  activityId: string
+  method: string
+  // The raw `--app` selector the agent passed (name, bundle id or `pid:N`).
+  appSelector: string | null
+  pid: number | null
+  windowId: number | null
+  // Target point in window points; null when the action has no point (typing) or it is unknown yet.
+  point: { x: number; y: number } | null
+  ok: boolean | null
+  at: number
+}
+
+export type DesktopAppAgentBlock = {
+  pid: number
+  appName: string
+  bundleId: string | null
+}

@@ -62,7 +62,10 @@ export function buildEmulatorGesturePoint(
   return edge === undefined ? { ...point, type } : { ...point, type, edge }
 }
 
-function resolveSimulatorScreenContentRect(rect: RectLike, streamSize: StreamSize): ContentRect {
+export function resolveSimulatorScreenContentRect(
+  rect: RectLike,
+  streamSize: StreamSize
+): ContentRect {
   let contentLeft = rect.left
   let contentTop = rect.top
   let contentWidth = rect.width
