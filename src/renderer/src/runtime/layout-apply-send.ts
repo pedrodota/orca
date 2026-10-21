@@ -112,6 +112,7 @@ export type WindowLayoutCommand =
   | {
       type: 'openSimulatorTab'
       tabId: string
+      kind?: 'simulator' | 'desktop-app'
       groupId: string
       afterTabId?: string
       index?: number

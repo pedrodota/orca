@@ -86,6 +86,9 @@ struct AppDescriptor {
     var needsManualAccessibilityMode: Bool {
         // Chromium/Electron apps often need this private AX mode, but applying it
         // broadly can corrupt native Cocoa app trees into app-root-only nodes.
+        if usesChromiumFramework {
+            return true
+        }
         guard let bundleId = bundleId?.lowercased() else {
             return false
         }
@@ -100,6 +103,15 @@ struct AppDescriptor {
             bundleId == "com.hnc.discord" ||
             bundleId == "com.microsoft.teams2" ||
             bundleId == "notion.id"
+    }
+
+    // Why: an Electron or Chromium build ships its framework in the bundle; native Cocoa apps do not.
+    var usesChromiumFramework: Bool {
+        guard let bundleURL = app.bundleURL else { return false }
+        let frameworks = bundleURL.appendingPathComponent("Contents/Frameworks")
+        let fileManager = FileManager.default
+        return fileManager.fileExists(atPath: frameworks.appendingPathComponent("Electron Framework.framework").path) ||
+            (try? fileManager.contentsOfDirectory(atPath: frameworks.path))?.contains { $0.hasSuffix("Chromium Framework.framework") || $0.hasSuffix("Chrome Framework.framework") } == true
     }
 
     var isKnownBrowser: Bool {
@@ -237,6 +249,10 @@ final class Provider {
             return try actionResult(params: params) { try scroll(params: params) }
         case "drag":
             return try actionResult(params: params) { try drag(params: params) }
+        case "listDesktopWindows":
+            return ["windows": DesktopAppBridge.listWindows()]
+        case "desktopInput":
+            return try DesktopAppBridge.input(params: params)
         default:
             throw ProviderError.coded("invalid_argument", "unknown method '\(method)'")
         }
@@ -544,9 +560,7 @@ final class Provider {
     }
 
     private func rejectBlockedApp(_ app: AppDescriptor) throws {
-        if let bundle = app.bundleId, blockedBundleIds.contains(bundle) {
-            throw ProviderError.coded("app_blocked", "app '\(bundle)' is blocked for safety")
-        }
+        try rejectBlockedBundleId(app.bundleId)
     }
 
     private func listWindows(params: [String: JSONValue]) throws -> [String: Any] {
@@ -728,13 +742,7 @@ final class Provider {
     private func click(params: [String: JSONValue]) throws -> [String: Any] {
         let snapshot = try currentSnapshot(params: params)
         let button = try mouseButton(params["mouseButton"]?.string)
-        let count = try positiveInteger(params["clickCount"]?.number, defaultValue: 1, name: "clickCount")
-        guard count <= SyntheticMouseClickDelivery.maxClickCount else {
-            throw ProviderError.coded(
-                "invalid_argument",
-                "clickCount must be at most \(SyntheticMouseClickDelivery.maxClickCount)"
-            )
-        }
+        let count = try clickCount(params["clickCount"]?.number)
         let modifiers = try KeyMap.parseModifiers(params["modifiers"]?.string)
         // Why: agents expect a click into a target app to make the next
         // keyboard action safe, even when the click uses an AX action path.
@@ -745,7 +753,11 @@ final class Provider {
                count <= 1,
                button.hasAccessibilityAction,
                let actionName = try performClickAction(record: record, mouseButton: button) {
-                return actionMetadata(path: "accessibility", actionName: actionName)
+                return actionMetadata(
+                    path: "accessibility",
+                    actionName: actionName,
+                    targetPoint: center(record.localFrame, in: snapshot.windowBounds).map { windowRelative($0, snapshot) }
+                )
             }
             if let point = center(record.localFrame, in: snapshot.windowBounds) {
                 try Input.click(
@@ -758,7 +770,8 @@ final class Provider {
                 return actionMetadata(
                     path: "synthetic",
                     fallbackReason: "actionUnsupported",
-                    verification: unverifiedAction(reason: "synthetic_input")
+                    verification: unverifiedAction(reason: "synthetic_input"),
+                    targetPoint: windowRelative(point, snapshot)
                 )
             }
             throw ProviderError.coded("element_not_clickable", "element \(record.index) has no clickable frame")
@@ -773,7 +786,8 @@ final class Provider {
         )
         return actionMetadata(
             path: "synthetic",
-            verification: unverifiedAction(reason: "synthetic_input")
+            verification: unverifiedAction(reason: "synthetic_input"),
+            targetPoint: windowRelative(point, snapshot)
         )
     }
 
@@ -781,12 +795,7 @@ final class Provider {
         if mouseButton == .right {
             return performAction(record.element, "AXShowMenu") ? "AXShowMenu" : nil
         }
-        for action in ["AXPress", "AXConfirm", "AXOpen"] {
-            if performAction(record.element, action) {
-                return action
-            }
-        }
-        return nil
+        return performPrimaryAction(on: record.element)
     }
 
     private func performSecondaryAction(params: [String: JSONValue]) throws -> [String: Any] {
@@ -916,11 +925,11 @@ final class Provider {
                 throw ProviderError.coded("element_not_found", "element \(record.index) has no scrollable frame")
             }
             try Input.scroll(pid: snapshot.app.pid, at: point, direction: direction, pages: pages)
-            return actionMetadata(path: "synthetic", fallbackReason: "actionUnsupported")
+            return actionMetadata(path: "synthetic", fallbackReason: "actionUnsupported", targetPoint: windowRelative(point, snapshot))
         }
         let point = try coordinatePoint(params: params, xKey: "x", yKey: "y", snapshot: snapshot)
         try Input.scroll(pid: snapshot.app.pid, at: point, direction: direction, pages: pages)
-        return actionMetadata(path: "synthetic")
+        return actionMetadata(path: "synthetic", targetPoint: windowRelative(point, snapshot))
     }
 
     private func drag(params: [String: JSONValue]) throws -> [String: Any] {
@@ -943,7 +952,7 @@ final class Provider {
             end = try coordinatePoint(params: params, xKey: "toX", yKey: "toY", snapshot: snapshot)
         }
         try Input.drag(pid: snapshot.app.pid, from: start, to: end)
-        return actionMetadata(path: "synthetic")
+        return actionMetadata(path: "synthetic", targetPoint: windowRelative(end, snapshot))
     }
 
     private func element(_ snapshot: Snapshot, _ index: Int) throws -> ElementRecord {
@@ -971,6 +980,18 @@ private let blockedBundleIds: Set<String> = [
     "me.proton.pass.electron",
     "me.proton.pass.catalyst",
 ]
+
+private let orcaBundleId = "com.stablyai.orca"
+
+private func rejectBlockedBundleId(_ bundleId: String?) throws {
+    if let bundle = bundleId, blockedBundleIds.contains(bundle) {
+        throw ProviderError.coded("app_blocked", "app '\(bundle)' is blocked for safety")
+    }
+}
+
+private func performPrimaryAction(on element: AXUIElement) -> String? {
+    ["AXPress", "AXConfirm", "AXOpen"].first { performAction(element, $0) }
+}
 
 private func requiredString(_ params: [String: JSONValue], _ key: String) throws -> String {
     guard let value = params[key]?.string, !value.isEmpty else {
@@ -1737,6 +1758,17 @@ extension MouseButtonSelection {
     }
 }
 
+private func clickCount(_ raw: Double?) throws -> Int {
+    let count = try positiveInteger(raw, defaultValue: 1, name: "clickCount")
+    guard count <= SyntheticMouseClickDelivery.maxClickCount else {
+        throw ProviderError.coded(
+            "invalid_argument",
+            "clickCount must be at most \(SyntheticMouseClickDelivery.maxClickCount)"
+        )
+    }
+    return count
+}
+
 private func mouseButton(_ raw: String?) throws -> MouseButtonSelection {
     switch ActionArgumentValidation.mouseButton(raw) {
     case let .success(button):
@@ -2296,7 +2328,8 @@ private func actionMetadata(
     path: String,
     actionName: String? = nil,
     fallbackReason: String? = nil,
-    verification: [String: Any]? = nil
+    verification: [String: Any]? = nil,
+    targetPoint: [String: Any]? = nil
 ) -> [String: Any] {
     var metadata: [String: Any] = [
         "path": path,
@@ -2306,7 +2339,18 @@ private func actionMetadata(
     if let verification {
         metadata["verification"] = verification
     }
+    // Why: Orca's Desktop App pane animates the agent cursor to this window-relative point.
+    if let targetPoint {
+        metadata["targetPoint"] = targetPoint
+    }
     return metadata
+}
+
+private func windowRelative(_ screenPoint: CGPoint, _ snapshot: Snapshot) -> [String: Any] {
+    [
+        "x": Double(screenPoint.x - snapshot.windowBounds.minX),
+        "y": Double(screenPoint.y - snapshot.windowBounds.minY),
+    ]
 }
 
 private func verifiedAction(property: String, expected: String? = nil, actualPreview: String? = nil) -> [String: Any] {
@@ -2655,7 +2699,8 @@ private enum Input {
         try mouse(.leftMouseUp, source: source, point: end, button: .left, pid: pid)
     }
 
-    static func typeText(_ text: String, pid: pid_t) throws {
+    // Why: `background` posts straight to the target pid so the app never has to be frontmost.
+    static func typeText(_ text: String, pid: pid_t, background: Bool = false) throws {
         for unit in text.utf16 {
             var char = unit
             guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
@@ -2665,28 +2710,29 @@ private enum Input {
             }
             down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
             up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &char)
-            down.post(tap: .cghidEventTap)
-            up.post(tap: .cghidEventTap)
+            post(down, pid: pid, background: background)
+            post(up, pid: pid, background: background)
+            if background { usleep(4_000) }
         }
     }
 
-    static func pressKey(_ key: String, pid: pid_t) throws {
+    static func pressKey(_ key: String, pid: pid_t, background: Bool = false) throws {
         let parsed = try KeyMap.parse(key)
         var flags = CGEventFlags()
         var pressedModifiers: [KeyModifier] = []
         defer {
             for modifier in pressedModifiers.reversed() {
                 flags.remove(modifier.flag)
-                try? keyEvent(modifier.keyCode, down: false, flags: flags, pid: pid)
+                try? keyEvent(modifier.keyCode, down: false, flags: flags, pid: pid, background: background)
             }
         }
         for modifier in parsed.modifiers {
             flags.insert(modifier.flag)
-            try keyEvent(modifier.keyCode, down: true, flags: flags, pid: pid)
+            try keyEvent(modifier.keyCode, down: true, flags: flags, pid: pid, background: background)
             pressedModifiers.append(modifier)
         }
-        try keyEvent(parsed.keyCode, down: true, flags: flags, pid: pid)
-        try keyEvent(parsed.keyCode, down: false, flags: flags, pid: pid)
+        try keyEvent(parsed.keyCode, down: true, flags: flags, pid: pid, background: background)
+        try keyEvent(parsed.keyCode, down: false, flags: flags, pid: pid, background: background)
     }
 
     static func pasteText(_ text: String, pid: pid_t) throws {
@@ -2726,12 +2772,20 @@ private enum Input {
         event.postToPid(pid)
     }
 
-    private static func keyEvent(_ keyCode: CGKeyCode, down: Bool, flags: CGEventFlags, pid: pid_t) throws {
+    private static func post(_ event: CGEvent, pid: pid_t, background: Bool) {
+        if background {
+            event.postToPid(pid)
+        } else {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    private static func keyEvent(_ keyCode: CGKeyCode, down: Bool, flags: CGEventFlags, pid: pid_t, background: Bool) throws {
         guard let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: down) else {
             throw ProviderError.coded("accessibility_error", "failed to create key event")
         }
         event.flags = flags
-        event.post(tap: .cghidEventTap)
+        post(event, pid: pid, background: background)
     }
 }
 
@@ -2821,6 +2875,176 @@ private func isSelectAllHotkey(_ key: String) -> Bool {
         modifiers.contains("meta") ||
         modifiers.contains("cmdorctrl") ||
         modifiers.contains("commandorcontrol")
+}
+
+// Why: the Desktop App pane mirrors a window the user keeps working in Orca, so
+// its input must never activate, raise, or require focus on the target app.
+private enum DesktopAppBridge {
+    // Safe: every provider request runs under providerLock.
+    nonisolated(unsafe) private static var accessibilityPreparedPids = Set<pid_t>()
+
+    static func listWindows() -> [[String: Any]] {
+                return NSWorkspace.shared.runningApplications
+            .filter { !$0.isTerminated && $0.activationPolicy == .regular && $0.processIdentifier > 0 }
+            .filter { app in
+                let bundle = app.bundleIdentifier ?? ""
+                return !blockedBundleIds.contains(bundle) && !bundle.lowercased().hasPrefix(orcaBundleId)
+            }
+            .flatMap { app -> [[String: Any]] in
+                let pid = app.processIdentifier
+                return WindowCapture.candidates(pid: pid)
+                    .filter { $0.layer == 0 && $0.isOnScreen }
+                    .map { candidate in
+                        [
+                            "windowId": Int(candidate.windowId),
+                            "pid": Int(pid),
+                            "appName": app.localizedName ?? "pid \(pid)",
+                            "bundleId": jsonNullable(app.bundleIdentifier),
+                            "title": candidate.title ?? "",
+                            "bounds": [
+                                "x": Double(candidate.bounds.minX),
+                                "y": Double(candidate.bounds.minY),
+                                "width": Double(candidate.bounds.width),
+                                "height": Double(candidate.bounds.height),
+                            ],
+                        ]
+                    }
+            }
+    }
+
+    static func input(params: [String: JSONValue]) throws -> [String: Any] {
+        guard let pid = pid_t(exactly: try requiredInteger(params, "pid")), pid > 0 else {
+            throw ProviderError.coded("invalid_argument", "pid must be a positive integer")
+        }
+        guard let windowId = CGWindowID(exactly: try requiredInteger(params, "windowId")) else {
+            throw ProviderError.coded("invalid_argument", "windowId must be a window number")
+        }
+        guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else {
+            throw ProviderError.coded("app_not_found", "app pid \(pid) is not running")
+        }
+        try rejectBlockedBundleId(app.bundleIdentifier)
+        guard case let .object(input)? = params["input"], let kind = input["kind"]?.string else {
+            throw ProviderError.coded("invalid_argument", "input.kind is required")
+        }
+        guard let window = WindowCapture.candidates(pid: pid).first(where: { $0.windowId == windowId }) else {
+            throw ProviderError.coded("window_not_found", "window \(windowId) of pid \(pid) is no longer on screen")
+        }
+        switch kind {
+        case "click":
+            let point = try screenPoint(input, window: window)
+            let button = try mouseButton(input["button"]?.string)
+            let count = try clickCount(input["clickCount"]?.number)
+            return ["path": try click(app: app, at: point, button: button, count: count, windowId: windowId)]
+        case "scroll":
+            let point = try screenPoint(input, window: window)
+            try scroll(pid: pid, at: point, deltaX: input["deltaX"]?.number ?? 0, deltaY: input["deltaY"]?.number ?? 0)
+            return ["path": "synthetic"]
+        case "text":
+            let text = try requiredString(input, "text")
+            try Input.typeText(text, pid: pid, background: true)
+            return ["path": "synthetic"]
+        case "key":
+            try Input.pressKey(try requiredString(input, "key"), pid: pid, background: true)
+            return ["path": "synthetic"]
+        default:
+            throw ProviderError.coded("invalid_argument", "unsupported input kind '\(kind)'")
+        }
+    }
+
+    private static func screenPoint(_ input: [String: JSONValue], window: WindowCandidate) throws -> CGPoint {
+        guard let x = input["x"]?.number, let y = input["y"]?.number, x.isFinite, y.isFinite else {
+            throw ProviderError.coded("invalid_argument", "input.x and input.y are required")
+        }
+        guard x >= 0, y >= 0, x <= window.bounds.width, y <= window.bounds.height else {
+            throw ProviderError.coded("invalid_argument", "point (\(x), \(y)) is outside the window")
+        }
+        return CGPoint(x: window.bounds.minX + x, y: window.bounds.minY + y)
+    }
+
+    private static func click(app: NSRunningApplication, at point: CGPoint, button: MouseButtonSelection, count: Int, windowId: CGWindowID) throws -> String {
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let justPrepared = prepareAccessibility(appElement, app: app)
+        if count == 1 {
+            // Why: Chromium fills its AX tree lazily; the first hit after enabling it can miss.
+            for attempt in 0..<(justPrepared ? 2 : 1) {
+                if attempt > 0 { usleep(300_000) }
+                if let hit = hitTest(appElement, point), performClick(on: hit, button: button) != nil {
+                    return "accessibility"
+                }
+            }
+        }
+        try postMouseClick(pid: app.processIdentifier, at: point, button: button, count: count, windowId: windowId)
+        return "synthetic"
+    }
+
+    // Why: Chromium/Electron only build their AX tree after AXManualAccessibility is set,
+    // and the first hit test right after that lands on the root scroll area.
+    private static func prepareAccessibility(_ appElement: AXUIElement, app: NSRunningApplication) -> Bool {
+        guard !accessibilityPreparedPids.contains(app.processIdentifier) else { return false }
+        accessibilityPreparedPids.insert(app.processIdentifier)
+        let descriptor = AppDescriptor(name: app.localizedName ?? "", bundleId: app.bundleIdentifier, pid: app.processIdentifier, app: app)
+        guard descriptor.needsManualAccessibilityMode else { return false }
+        enableManualAccessibilityIfNeeded(appElement, app: descriptor)
+        usleep(300_000)
+        return true
+    }
+
+    private static func hitTest(_ appElement: AXUIElement, _ point: CGPoint) -> AXUIElement? {
+        var element: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(appElement, Float(point.x), Float(point.y), &element) == .success else {
+            return nil
+        }
+        return element
+    }
+
+    private static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+
+    private static func performClick(on hit: AXUIElement, button: MouseButtonSelection) -> String? {
+        var current: AXUIElement? = hit
+        for _ in 0..<6 {
+            guard let element = current else { return nil }
+            let role = stringAttribute(element, kAXRoleAttribute as String) ?? ""
+            if button == .left, textRoles.contains(role),
+               AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success {
+                return "AXFocused"
+            }
+            let available = actions(element)
+            if button == .right {
+                if available.contains("AXShowMenu"), performAction(element, "AXShowMenu") { return "AXShowMenu" }
+            } else if let action = performPrimaryAction(on: element) {
+                return action
+            }
+            current = copyElement(element, kAXParentAttribute as String)
+        }
+        return nil
+    }
+
+    private static func postMouseClick(pid: pid_t, at point: CGPoint, button: MouseButtonSelection, count: Int, windowId: CGWindowID) throws {
+        for clickIndex in 1...count {
+            for type in [button.downEvent, button.upEvent] {
+                guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button.cgButton) else {
+                    throw ProviderError.coded("accessibility_error", "failed to create mouse event")
+                }
+                event.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
+                event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowId))
+                event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowId))
+                event.postToPid(pid)
+                usleep(15_000)
+            }
+        }
+    }
+
+    private static func scroll(pid: pid_t, at point: CGPoint, deltaX: Double, deltaY: Double) throws {
+        guard deltaX.isFinite, deltaY.isFinite else {
+            throw ProviderError.coded("invalid_argument", "scroll deltas must be finite")
+        }
+        let clamp = { (value: Double) -> Int32 in Int32(max(-10_000, min(10_000, -value.rounded()))) }
+        guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: clamp(deltaY), wheel2: clamp(deltaX), wheel3: 0) else {
+            throw ProviderError.coded("accessibility_error", "failed to create scroll event")
+        }
+        event.location = point
+        event.postToPid(pid)
+    }
 }
 
 private struct KeyModifier {
@@ -4109,7 +4333,7 @@ private func isTrustedOrcaApplication(_ pid: pid_t) -> Bool {
     }
     // Why: dev validation runs from per-worktree wrapper apps with stable
     // Orca-owned bundle ids; the sidecar peer check must still authorize them.
-    return bundleId == "com.stablyai.orca" ||
+    return bundleId == orcaBundleId ||
         bundleId.hasPrefix("com.stablyai.orca.dev.") ||
         bundleId == "com.github.Electron"
 }

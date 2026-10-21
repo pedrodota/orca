@@ -81,7 +81,7 @@ export function activateCyclableTab(store: AppStoreState, next: TypeCyclableTab)
     if (next.tabId) {
       store.activateTab?.(next.tabId)
     }
-    // Why: the 'simulator' tab-bar item covers every live surface.
+    // Why: the 'simulator' tab-bar item covers every live surface (mobile emulator, desktop app).
     const liveSurfaceType = store.getTab(tabId)?.contentType
     store.setActiveTabType(
       isLiveSurfaceContentType(liveSurfaceType) ? liveSurfaceType : 'simulator',

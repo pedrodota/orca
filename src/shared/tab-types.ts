@@ -26,6 +26,7 @@ export type TabContentType =
   | 'agent-session'
   | 'browser'
   | 'simulator'
+  | 'desktop-app'
 
 export type WorkspaceVisibleTabType =
   | 'terminal'
@@ -33,6 +34,7 @@ export type WorkspaceVisibleTabType =
   | 'agent-session'
   | 'browser'
   | 'simulator'
+  | 'desktop-app'
 export type CtrlTabOrderMode = 'mru' | 'sequential'
 
 // Why: many-to-one — every editor-family kind collapses to 'editor'. Never invert it by equality;
@@ -49,14 +51,14 @@ export function toVisibleTabType(contentType: TabContentType): WorkspaceVisibleT
   return 'editor'
 }
 
-/** Tabs drawn by a pane overlay over the group body (today the mobile emulator), not by an editor. */
-export const LIVE_SURFACE_CONTENT_TYPES = ['simulator'] as const
+/** Tabs drawn by a pane overlay over the group body (mobile emulator, desktop app window), not by an editor. */
+export const LIVE_SURFACE_CONTENT_TYPES = ['simulator', 'desktop-app'] as const
 export type LiveSurfaceContentType = (typeof LIVE_SURFACE_CONTENT_TYPES)[number]
 
 export function isLiveSurfaceContentType(
   contentType: TabContentType | undefined | null
 ): contentType is LiveSurfaceContentType {
-  return contentType === 'simulator'
+  return contentType === 'simulator' || contentType === 'desktop-app'
 }
 
 export type Tab = {

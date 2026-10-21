@@ -240,6 +240,7 @@ const SetDefaultTabsAppliedCommand = z.object({
 const OpenSimulatorTabCommand = z.object({
   type: z.literal('openSimulatorTab'),
   ...OnTab,
+  kind: z.enum(['simulator', 'desktop-app']).optional(),
   groupId: z.string().min(1).optional(),
   afterTabId: z.string().min(1).optional(),
   index: z.number().int().nonnegative().optional(),

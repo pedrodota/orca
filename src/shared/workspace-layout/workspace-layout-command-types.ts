@@ -138,7 +138,10 @@ export type LayoutCommand =
       /** The editor's file id: the tab's entity. Absent (main's own opens only; the wire still
        *  requires it): main picks it for `file`. */
       fileId?: string
-      contentType: Exclude<TabContentType, 'terminal' | 'browser' | 'agent-session' | 'simulator'>
+      contentType: Exclude<
+        TabContentType,
+        'terminal' | 'browser' | 'agent-session' | 'simulator' | 'desktop-app'
+      >
       /** Present for edit-mode files, which are restored after restart. */
       file?: LayoutEditorFile
       /** What the tab shows beyond its file; not saved. */
@@ -158,6 +161,8 @@ export type LayoutCommand =
       type: 'openSimulatorTab'
       /** The window's id for the tab it drew; also the tab's entity. */
       tabId: string
+      /** Which live-surface tab; absent means 'simulator' (older windows). */
+      kind?: 'simulator' | 'desktop-app'
       groupId?: string
       /** Placement in the group: after this tab, else at this index, else at its end. */
       afterTabId?: string

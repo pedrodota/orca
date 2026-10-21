@@ -1,5 +1,6 @@
 import { computerProviderUnavailableMessage } from './computer-provider-unavailable-message'
 import { currentComputerProvider, shutdownComputerProviders } from './computer-provider-lifecycle'
+import { MacOSNativeProviderClient } from './macos-native-provider-client'
 import { RuntimeClientError } from './runtime-client-error'
 
 type SidecarRequest = {
@@ -90,6 +91,16 @@ async function dispatch(method: string, params: Record<string, unknown>): Promis
     }
     case 'setValue': {
       return await provider.action('setValue', params)
+    }
+    case 'listDesktopWindows':
+    case 'desktopInput': {
+      if (!(provider instanceof MacOSNativeProviderClient)) {
+        throw new RuntimeClientError(
+          'unsupported_capability',
+          'Desktop App panes are only available on macOS'
+        )
+      }
+      return await provider.desktopApp(method, params)
     }
     default:
       throw new RuntimeClientError(

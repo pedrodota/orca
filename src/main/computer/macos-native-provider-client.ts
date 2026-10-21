@@ -12,6 +12,7 @@ import {
   macOSActionCapabilityKey,
   REQUIRED_MACOS_PROVIDER_PROTOCOL_VERSION,
   type NativeActionMethod,
+  type NativeDesktopAppMethod,
   type NativeMethod,
   type NativeResponse,
   type PendingNativeRequest,
@@ -56,6 +57,9 @@ export class MacOSNativeProviderClient {
   }
   async snapshot(params: unknown): Promise<ComputerSnapshotResult> {
     return (await this.call('getAppState', params)) as ComputerSnapshotResult
+  }
+  async desktopApp(method: NativeDesktopAppMethod, params: unknown): Promise<unknown> {
+    return await this.call(method, params)
   }
   async action(method: NativeActionMethod, params: unknown): Promise<ComputerActionResult> {
     await validateComputerProviderActionParams(

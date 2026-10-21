@@ -10,7 +10,7 @@ import { drawnTabPlacement } from '@/runtime/layout-owner-drawn-tab-placement'
 type SimulatorTabState = Parameters<typeof recordLayoutApply>[0] &
   Pick<AppState, 'groupsByWorktree' | 'layoutByWorktree'>
 
-/** A simulator tab the window just drew, placed where the window drew it. */
+/** A simulator or desktop-app tab the window just drew, placed where the window drew it. */
 export function recordOpenedSimulatorTabInLayoutOwner(state: SimulatorTabState, tab: Tab): void {
   if (!isLiveSurfaceContentType(tab.contentType)) {
     return
@@ -18,6 +18,8 @@ export function recordOpenedSimulatorTabInLayoutOwner(state: SimulatorTabState, 
   recordLayoutApply(state, tab.worktreeId, {
     type: 'openSimulatorTab',
     tabId: tab.id,
+    // Older mains read an absent kind as 'simulator'.
+    ...(tab.contentType === 'desktop-app' ? { kind: 'desktop-app' as const } : {}),
     // Opened to the right: main makes the window's new split with the tab.
     ...drawnTabPlacement(state, tab.worktreeId, tab.groupId, tab.id),
     createdAt: tab.createdAt

@@ -16,10 +16,14 @@ export type NativeMethod =
   | 'pasteText'
   | 'setValue'
   | 'terminate'
+  | NativeDesktopAppMethod
+
+// Desktop App pane calls: background window listing and input that never activates the app.
+export type NativeDesktopAppMethod = 'listDesktopWindows' | 'desktopInput'
 
 export type NativeActionMethod = Exclude<
   NativeMethod,
-  'handshake' | 'listApps' | 'listWindows' | 'getAppState' | 'terminate'
+  'handshake' | 'listApps' | 'listWindows' | 'getAppState' | 'terminate' | NativeDesktopAppMethod
 >
 
 export type NativeResponse =

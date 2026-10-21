@@ -7,7 +7,7 @@ import { TabGroupBodyOverlaySlot } from './tab-group-body-overlay-slot'
 const EMPTY_UNIFIED_TABS: readonly Tab[] = []
 const EMPTY_GROUPS: readonly TabGroup[] = []
 
-/** Mounts one persistent overlay pane per tab of a live-surface type (today the emulator). */
+/** Mounts one persistent overlay pane per tab of a live-surface type (emulator, desktop app). */
 const LiveSurfacePaneOverlayLayer = memo(function LiveSurfacePaneOverlayLayer({
   worktreeId,
   isWorktreeActive,

@@ -165,6 +165,7 @@ function projectTab(tab: LayoutTab, scope: Scope): RuntimeMobileSessionSnapshotT
     case 'conflict-review':
     case 'check-details':
     case 'simulator':
+    case 'desktop-app':
       return []
   }
 }

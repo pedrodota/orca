@@ -986,6 +986,13 @@
               "bf4f2a8a72": "Could not start the emulator. Check iOS or Android emulator setup and try another device."
             }
           }
+        },
+        "desktop": {
+          "app": {
+            "tab": {
+              "42cef4eb31": "Desktop App"
+            }
+          }
         }
       },
       "orchestration": {
@@ -3959,7 +3966,22 @@
                   "1baeb07c17": "ios simulator",
                   "8a580f88cf": "iphone",
                   "7ecdc5ef08": "ipad",
-                  "14965cc123": "mobile"
+                  "14965cc123": "mobile",
+                  "c9e8df95d8": "New Desktop App",
+                  "d0b6a5b6ff": "desktop app",
+                  "9ed0a4d5b8": "mac app",
+                  "5a1b0e2d40": "native app",
+                  "cd5b036f44": "window",
+                  "d364c9667c": "computer use"
+                }
+              }
+            },
+            "bar": {
+              "static": {
+                "create": {
+                  "menu": {
+                    "b7f15e1cd8": "New Desktop App"
+                  }
                 }
               }
             }
@@ -18540,6 +18562,38 @@
         "copyFailed": "Could not copy the link.",
         "signingIn": "Signing in…",
         "cancel": "Cancel"
+      },
+      "desktop": {
+        "app": {
+          "pane": {
+            "DesktopAppPane": {
+              "4bc198fe10": "Pick a Mac app window to show it here. You and your agents can click, scroll and type in it without leaving Orca."
+            },
+            "desktop": {
+              "app": {
+                "pane": {
+                  "toolbar": {
+                    "883e3130f3": "Desktop App",
+                    "81d7882862": "Live",
+                    "125a87c4a2": "Connecting…",
+                    "907a45c75b": "Choose window",
+                    "bd517e7e2b": "Refresh window list"
+                  }
+                }
+              }
+            },
+            "use": {
+              "desktop": {
+                "app": {
+                  "capture": {
+                    "006a3c21a6": "The window was closed or can no longer be captured.",
+                    "84bd9c534b": "macOS blocked the capture. Allow Orca in System Settings › Privacy & Security › Screen Recording, then reopen this tab."
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "i18n": {
