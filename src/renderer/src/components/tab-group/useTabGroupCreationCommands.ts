@@ -10,7 +10,7 @@ import { openMobileEmulatorTab } from '@/lib/open-mobile-emulator-tab'
 import { ensureSimulatorTab, getSimulatorTabForWorktree } from '@/lib/ensure-simulator-tab'
 import { canOpenDesktopAppTab, openDesktopAppTab } from '@/lib/open-desktop-app-tab'
 import { buildDuplicatedBrowserTabOptions } from '@/lib/duplicate-browser-tab-options'
-import { runtimeEnvironmentIdWithLegacyFallbackUnlessTwin } from '@/lib/worktree-runtime-owner'
+import { runtimeEnvironmentIdOrLocalUnlessTwin } from '@/lib/worktree-runtime-owner'
 import { browserWorkspaceHasRemoteOwner } from '@/runtime/remote-browser-tab-ownership'
 import { getClientCreationActionPolicy } from '@/lib/client-creation-action-policy'
 import type { TabGroupWorktreeSnapshot } from './useTabGroupItemProjections'
@@ -76,10 +76,7 @@ export function useTabGroupCreationCommands({
         if (!source) {
           return
         }
-        const runtimeEnvironmentId = runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(
-          state,
-          worktreeId
-        )
+        const runtimeEnvironmentId = runtimeEnvironmentIdOrLocalUnlessTwin(state, worktreeId)
         const browserAvailability = getClientCreationActionPolicy(state, worktreeId)[
           'managed-browser'
         ]
@@ -122,7 +119,7 @@ export function useTabGroupCreationCommands({
     },
     newTerminalWithShell: (shellOverride: string) => {
       void (async () => {
-        const environmentId = runtimeEnvironmentIdWithLegacyFallbackUnlessTwin(
+        const environmentId = runtimeEnvironmentIdOrLocalUnlessTwin(
           useAppStore.getState(),
           worktreeId
         )
