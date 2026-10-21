@@ -2,6 +2,7 @@ import type {
   DesktopAppAgentActivity,
   DesktopAppWindow
 } from '../../../../shared/desktop-app-types'
+import { parseDesktopAppSelector, selectorNamesApp } from '../../../../shared/desktop-app-selector'
 
 export type DesktopAppPaneTarget = Pick<
   DesktopAppWindow,
@@ -23,20 +24,13 @@ export function activityTargetsPane(
   if (activity.windowId !== null) {
     return true
   }
-  return selectorNamesApp(activity.appSelector, target)
+  return selectorTargetsApp(activity.appSelector, target)
 }
 
-function selectorNamesApp(selector: string | null, target: DesktopAppPaneTarget): boolean {
-  if (!selector) {
+function selectorTargetsApp(selector: string | null, target: DesktopAppPaneTarget): boolean {
+  const parsed = parseDesktopAppSelector(selector)
+  if (!parsed) {
     return false
   }
-  const value = selector.trim().toLowerCase()
-  const pidMatch = /^pid:(\d+)$/.exec(value)
-  if (pidMatch) {
-    return Number(pidMatch[1]) === target.pid
-  }
-  return (
-    value === target.appName.toLowerCase() ||
-    (target.bundleId !== null && value === target.bundleId.toLowerCase())
-  )
+  return parsed.kind === 'pid' ? parsed.pid === target.pid : selectorNamesApp(parsed.name, target)
 }
