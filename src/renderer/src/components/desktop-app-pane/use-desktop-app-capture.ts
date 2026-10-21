@@ -37,7 +37,12 @@ export function useDesktopAppCapture(
       return
     }
     let cancelled = false
+    let prepared = false
     let stream: MediaStream | null = null
+    // Why: main keeps the window input-authorized until the pane that prepared it lets go.
+    const release = (): void => {
+      void api.releaseCapture({ windowId, pid }).catch(() => undefined)
+    }
     const onTrackEnded = (): void => {
       if (!cancelled) {
         setState({
@@ -57,6 +62,11 @@ export function useDesktopAppCapture(
             return null
           }
           await api.prepareCapture({ windowId, pid })
+          prepared = true
+          if (cancelled) {
+            release()
+            return null
+          }
           return navigator.mediaDevices.getDisplayMedia({
             video: { frameRate: { ideal: 30, max: 60 } },
             audio: false
@@ -80,6 +90,10 @@ export function useDesktopAppCapture(
     }
     void start()
     return () => {
+      // Why: a prepare still in flight releases itself once it sees `cancelled`.
+      if (prepared) {
+        release()
+      }
       cancelled = true
       stream?.getTracks().forEach((t) => t.stop())
     }
