@@ -10,6 +10,7 @@ import type {
 import {
   assertMacOSProviderCapability,
   macOSActionCapabilityKey,
+  macOSDesktopAppCapabilityKey,
   REQUIRED_MACOS_PROVIDER_PROTOCOL_VERSION,
   type NativeActionMethod,
   type NativeDesktopAppMethod,
@@ -59,6 +60,7 @@ export class MacOSNativeProviderClient {
     return (await this.call('getAppState', params)) as ComputerSnapshotResult
   }
   async desktopApp(method: NativeDesktopAppMethod, params: unknown): Promise<unknown> {
+    await this.ensureCapability('desktopApp', macOSDesktopAppCapabilityKey(method))
     return await this.call(method, params)
   }
   async action(method: NativeActionMethod, params: unknown): Promise<ComputerActionResult> {

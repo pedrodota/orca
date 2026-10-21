@@ -9,7 +9,7 @@ import ScreenCaptureKit
 
 private let providerName = "orca-computer-use-macos"
 private let providerVersion = "1.0.0"
-private let providerProtocolVersion = 1
+private let providerProtocolVersion = 2
 
 struct Request: Decodable {
     let id: Int
@@ -532,6 +532,10 @@ final class Provider {
                     "dialogs": false,
                     "dock": false,
                     "menubar": false,
+                ],
+                "desktopApp": [
+                    "listWindows": true,
+                    "input": true,
                 ],
             ],
         ]
