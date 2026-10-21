@@ -38,4 +38,10 @@ describe('agent activity matching', () => {
     expect(activityTargetsPane(activity({ pid: 62961, windowId: 1 }), PEPPER)).toBe(false)
     expect(activityTargetsPane(activity({}), PEPPER)).toBe(false)
   })
+
+  it('reads selectors with the native helper grammar', () => {
+    expect(activityTargetsPane(activity({ appSelector: '\u0085pid:+62961 ' }), PEPPER)).toBe(true)
+    expect(activityTargetsPane(activity({ appSelector: 'PID:62961' }), PEPPER)).toBe(false)
+    expect(activityTargetsPane(activity({ appSelector: 'pépper' }), PEPPER)).toBe(false)
+  })
 })

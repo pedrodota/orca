@@ -36,10 +36,14 @@ export function useDesktopAppAgentControl(
         dispatch({ type: 'hydrateStopped' })
       }
     })
+    // Why: every activity reaches the reducer so an `end` that resolved elsewhere still closes
+    // the action its matching `start` opened here.
     const unsubscribe = api.onAgentActivity((activity) => {
-      if (activityTargetsPane(activity, paneTarget)) {
-        dispatch({ type: 'activity', activity })
-      }
+      dispatch({
+        type: 'activity',
+        activity,
+        targetsPane: activityTargetsPane(activity, paneTarget)
+      })
     })
     return () => {
       disposed = true

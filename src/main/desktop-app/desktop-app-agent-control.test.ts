@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComputerActionResult } from '../../shared/runtime-types'
 import type { DesktopAppAgentActivity } from '../../shared/desktop-app-types'
 import { COMPUTER_ERROR_CODES } from '../../shared/computer-use-runtime-types'
@@ -6,6 +6,7 @@ import {
   allowDesktopAppAgent,
   blockDesktopAppAgent,
   findBlockedDesktopApp,
+  isDesktopAppAgentBlocked,
   resetDesktopAppAgentControlForTest,
   runComputerActionWithActivity,
   setDesktopAppActivityListener
@@ -36,7 +37,20 @@ function actionResult(
   }
 }
 
+const exitedPids = new Set<number>()
+
+beforeEach(() => {
+  vi.spyOn(process, 'kill').mockImplementation((pid: number) => {
+    if (exitedPids.has(pid)) {
+      throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' })
+    }
+    return true
+  })
+})
+
 afterEach(() => {
+  exitedPids.clear()
+  vi.restoreAllMocks()
   resetDesktopAppAgentControlForTest()
 })
 
@@ -55,6 +69,14 @@ describe('findBlockedDesktopApp', () => {
     blockDesktopAppAgent(PEPPER)
     expect(findBlockedDesktopApp('\u0085pid:4242\u2028')).toEqual(PEPPER)
     expect(findBlockedDesktopApp('\u00a0PEPPER\t')).toEqual(PEPPER)
+  })
+
+  it('forgets the block once the app exits, so a reused pid is not blocked', () => {
+    blockDesktopAppAgent(PEPPER)
+    exitedPids.add(PEPPER.pid)
+    expect(findBlockedDesktopApp('PEPPER')).toBeNull()
+    exitedPids.clear()
+    expect(isDesktopAppAgentBlocked(PEPPER.pid)).toBe(false)
   })
 
   it('stops matching once the app is allowed again', () => {
@@ -165,5 +187,18 @@ describe('runComputerActionWithActivity', () => {
       )
     ).resolves.toMatchObject({ action: { path: 'accessibility' } })
     warn.mockRestore()
+  })
+
+  it('drops a block whose pid now belongs to another app', async () => {
+    blockDesktopAppAgent(PEPPER)
+    const run = vi.fn(async () => actionResult())
+    const reused = async () => [
+      { name: 'Terminal', bundleId: 'com.apple.Terminal', pid: PEPPER.pid }
+    ]
+
+    await expect(
+      runComputerActionWithActivity('computer.click', { app: 'pid:4242' }, run, reused)
+    ).resolves.toBeDefined()
+    expect(isDesktopAppAgentBlocked(PEPPER.pid)).toBe(false)
   })
 })
