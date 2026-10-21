@@ -18577,10 +18577,10 @@
         "app": {
           "pane": {
             "DesktopAppAgentOverlay": {
-              "6ae3316ee2": "Claude was stopped for this app",
-              "db20d7f6de": "Claude is controlling this app",
+              "6ae3316ee2": "The agent was stopped for this app",
+              "db20d7f6de": "An agent is controlling this app",
               "7a502d7891": "Allow again",
-              "371b67dea5": "Stop Claude"
+              "371b67dea5": "Stop agent"
             },
             "DesktopAppPane": {
               "4bc198fe10": "Pick a Mac app window to show it here. You and your agents can click, scroll and type in it without leaving Orca."

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import type { Point } from './desktop-app-point-mapping'
 import { translate } from '@/i18n/i18n'
 
-// Same arrow and stroke as Claude in Chrome's agent cursor (20x26 viewBox, tip at 0,0).
+// Classic arrow pointer (20x26 viewBox, tip at 0,0).
 const CURSOR_PATH = 'M0 0 L0 18 L4.5 14 L7.5 21.5 L11 20 L8 13 L14 13 Z'
 
 type DesktopAppAgentOverlayProps = {
@@ -117,7 +117,7 @@ export function DesktopAppAgentOverlay({
 
 type CursorTravel = { point: Point; durationMs: number }
 
-// Why: like Claude in Chrome the cursor glides to each point instead of jumping; a fixed 180ms
+// Why: the cursor glides to each point so the user can follow it; a fixed 180ms
 // reads as a jump across a wide pane, so the duration grows with the distance.
 function useAnimatedCursor(target: Point | null, origin: Point): CursorTravel | null {
   const [travel, setTravel] = useState<CursorTravel | null>(null)
