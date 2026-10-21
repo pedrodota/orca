@@ -66,8 +66,9 @@ export function useDesktopAppInput(
     pointerStart.current = { x: event.clientX, y: event.clientY, button: event.button }
   }, [])
 
-  const onPointerUp = useCallback(
-    (event: React.PointerEvent<HTMLElement>) => {
+  // Why: mouseup, unlike pointerup (detail 0), carries the click count for double and triple clicks.
+  const onMouseUp = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
       const start = pointerStart.current
       pointerStart.current = null
       if (!start || start.button !== event.button || (event.button !== 0 && event.button !== 2)) {
@@ -144,5 +145,5 @@ export function useDesktopAppInput(
     [send]
   )
 
-  return { onPointerDown, onPointerUp, onWheel, onKeyDown, onPaste }
+  return { onPointerDown, onMouseUp, onWheel, onKeyDown, onPaste }
 }

@@ -72,4 +72,17 @@ describe('useDesktopAppInput', () => {
     frames.forEach((frame) => frame(0))
     expect(sendInput).not.toHaveBeenCalled()
   })
+
+  it('sends the click count the mouseup reports', () => {
+    const { result } = renderInput()
+    result.current.onPointerDown(
+      mouseEvent('pointer', 0) as unknown as React.PointerEvent<HTMLElement>
+    )
+    result.current.onMouseUp(mouseEvent('mouse', 2) as unknown as React.MouseEvent<HTMLElement>)
+    expect(sendInput).toHaveBeenCalledWith({
+      windowId: 1,
+      pid: 42,
+      input: { kind: 'click', x: 10, y: 20, button: 'left', clickCount: 2 }
+    })
+  })
 })

@@ -34,7 +34,7 @@ export function DesktopAppWindowView({
         tabIndex={0}
         aria-label={target.title || target.appName}
         onPointerDown={input.onPointerDown}
-        onPointerUp={input.onPointerUp}
+        onMouseUp={input.onMouseUp}
         onWheel={input.onWheel}
         onKeyDown={input.onKeyDown}
         onPaste={input.onPaste}
