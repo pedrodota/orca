@@ -36,7 +36,8 @@ export type PendingNativeRequest = {
   timer: NodeJS.Timeout
 }
 
-export const REQUIRED_MACOS_PROVIDER_PROTOCOL_VERSION = 1
+// Why: 2 added the Desktop App methods; a helper left over from an older build is restarted.
+export const REQUIRED_MACOS_PROVIDER_PROTOCOL_VERSION = 2
 
 export function assertMacOSProviderCapability(
   capabilities: ComputerProviderCapabilities | null,
@@ -62,6 +63,12 @@ export function macOSActionCapabilityKey(
     setValue: 'setValue'
   } satisfies Record<NativeActionMethod, keyof ComputerProviderCapabilities['supports']['actions']>
   return keys[method]
+}
+
+export function macOSDesktopAppCapabilityKey(
+  method: NativeDesktopAppMethod
+): keyof NonNullable<ComputerProviderCapabilities['supports']['desktopApp']> {
+  return method === 'listDesktopWindows' ? 'listWindows' : 'input'
 }
 
 export function writeNativeProviderLine(transport: net.Socket, line: string): Promise<void> {

@@ -14,7 +14,8 @@ import {
 import { isTrustedUIRenderer } from '../ipc/ui'
 import {
   isDesktopAppWindowAuthorized,
-  prepareDesktopAppCapture
+  prepareDesktopAppCapture,
+  releaseDesktopAppCapture
 } from './desktop-app-capture-source'
 import {
   parseAgentBlockArgs,
@@ -22,7 +23,7 @@ import {
   parseSendInputArgs,
   parseTargetArgs
 } from './desktop-app-ipc-schema'
-import { parseDesktopAppWindows } from './desktop-app-window-list'
+import { parseDesktopAppWindows, resolveListedTarget } from './desktop-app-window-list'
 
 function broadcastAgentActivity(activity: DesktopAppAgentActivity): void {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -41,12 +42,17 @@ export function registerDesktopAppHandlers(): void {
   setDesktopAppActivityListener(broadcastAgentActivity)
   ipcMain.handle('desktopApp:listWindows', async (event): Promise<DesktopAppWindow[]> => {
     assertTrustedSender(event.sender)
-    return parseDesktopAppWindows(await callComputerSidecarDesktopApp('listDesktopWindows', {}))
+    return await listWindows()
   })
-  ipcMain.handle('desktopApp:prepareCapture', (event, args: unknown) => {
+  ipcMain.handle('desktopApp:prepareCapture', async (event, args: unknown) => {
     assertTrustedSender(event.sender)
-    const target = parseTargetArgs(args, 'desktopApp:prepareCapture')
-    return prepareDesktopAppCapture(event.sender, target)
+    const requested = parseTargetArgs(args, 'desktopApp:prepareCapture')
+    const target = resolveListedTarget(await listWindows(), requested)
+    return await prepareDesktopAppCapture(event.sender, target)
+  })
+  ipcMain.handle('desktopApp:releaseCapture', (event, args: unknown) => {
+    assertTrustedSender(event.sender)
+    releaseDesktopAppCapture(event.sender, parseTargetArgs(args, 'desktopApp:releaseCapture'))
   })
   ipcMain.handle(
     'desktopApp:sendInput',
@@ -76,6 +82,10 @@ export function registerDesktopAppHandlers(): void {
     assertTrustedSender(event.sender)
     return isDesktopAppAgentBlocked(parsePidArgs(args, 'desktopApp:isAgentBlocked').pid)
   })
+}
+
+async function listWindows(): Promise<DesktopAppWindow[]> {
+  return parseDesktopAppWindows(await callComputerSidecarDesktopApp('listDesktopWindows', {}))
 }
 
 function assertTrustedSender(sender: Electron.WebContents): void {

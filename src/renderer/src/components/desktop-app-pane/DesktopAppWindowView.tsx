@@ -64,7 +64,7 @@ export function DesktopAppWindowView({
         onLoadedMetadata={onMediaResize}
         onResize={onMediaResize}
         onPointerDown={input.onPointerDown}
-        onPointerUp={input.onPointerUp}
+        onMouseUp={input.onMouseUp}
         onWheel={input.onWheel}
         onKeyDown={input.onKeyDown}
         onPaste={input.onPaste}

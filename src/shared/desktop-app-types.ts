@@ -1,4 +1,4 @@
-// Contract between the Desktop App pane (renderer) and the macOS window bridge (main).
+// Contract between the Desktop App pane (renderer) and the native window bridge (main).
 // Coordinates are window-relative points (same space as `orca computer click --x/--y`).
 
 type DesktopAppWindowBounds = {
@@ -41,7 +41,7 @@ export type DesktopAppInputResult = {
 }
 
 export type DesktopAppCaptureSource = {
-  // Electron desktopCapturer id (`window:<CGWindowID>:0`) armed for the next getDisplayMedia call.
+  // Electron desktopCapturer id (`window:<native window id>:0`) armed for the next getDisplayMedia call.
   sourceId: string
 }
 

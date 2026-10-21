@@ -1,3 +1,4 @@
+import ctypes
 import importlib.util
 import sys
 import types
@@ -247,6 +248,73 @@ class RuntimeRenderTest(unittest.TestCase):
         self.assertEqual(records[-1]["name"], f"Depth {runtime.MAX_DEPTH}")
         self.assertTrue(truncation["truncated"])
         self.assertTrue(truncation["maxDepthReached"])
+
+
+class DesktopAppRuntimeTest(unittest.TestCase):
+    def test_wayland_degrades_with_unsupported_capability(self):
+        for environ in ({"XDG_SESSION_TYPE": "wayland", "DISPLAY": ":0"}, {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}):
+            reason = runtime.desktop_app_unsupported_reason(environ)
+            self.assertTrue(reason.startswith("unsupported capability:"))
+            self.assertIn("Wayland", reason)
+
+    def test_x11_session_is_supported_and_missing_display_degrades(self):
+        self.assertIsNone(runtime.desktop_app_unsupported_reason({"XDG_SESSION_TYPE": "x11", "DISPLAY": ":0"}))
+        self.assertIsNone(runtime.desktop_app_unsupported_reason({"XDG_SESSION_TYPE": "x11", "WAYLAND_DISPLAY": "w", "DISPLAY": ":0"}))
+        self.assertIn("DISPLAY", runtime.desktop_app_unsupported_reason({"XDG_SESSION_TYPE": "x11"}))
+
+    def test_desktop_tools_report_wayland_instead_of_crashing(self):
+        original = dict(runtime.os.environ)
+        runtime.os.environ.update({"XDG_SESSION_TYPE": "wayland", "WAYLAND_DISPLAY": "wayland-0"})
+        try:
+            for operation in (
+                {"tool": "list_desktop_windows"},
+                {"tool": "desktop_input", "pid": 7, "windowId": 9, "input": {"kind": "text", "text": "a"}},
+            ):
+                with self.assertRaisesRegex(RuntimeError, "^unsupported capability:"):
+                    runtime.run_operation(operation)
+        finally:
+            runtime.os.environ.clear()
+            runtime.os.environ.update(original)
+
+    def test_input_rejects_bad_targets_before_opening_the_display(self):
+        with self.assertRaisesRegex(ValueError, "pid must be a positive integer"):
+            runtime.desktop_input({"pid": 0, "windowId": 9, "input": {"kind": "text"}})
+        with self.assertRaisesRegex(ValueError, "windowId must be a positive integer"):
+            runtime.desktop_input({"pid": 7, "windowId": True, "input": {"kind": "text"}})
+        with self.assertRaisesRegex(ValueError, "^invalid_argument:"):
+            runtime.desktop_input({"pid": 7, "windowId": 9})
+
+    def test_point_must_stay_inside_the_window(self):
+        self.assertEqual(runtime.desktop_app_point_in_bounds(400, 300, 10.4, 20.6), (10, 21))
+        with self.assertRaisesRegex(ValueError, "^invalid_argument:"):
+            runtime.desktop_app_point_in_bounds(400, 300, 400, 1)
+        with self.assertRaisesRegex(ValueError, "x must be a finite number"):
+            runtime.desktop_app_point_in_bounds(400, 300, float("nan"), 1)
+
+    def test_scroll_maps_pixels_to_wheel_buttons(self):
+        self.assertEqual(runtime.desktop_app_scroll_buttons(0, 120), [(5, 2)])
+        self.assertEqual(runtime.desktop_app_scroll_buttons(-30, -10), [(4, 1), (6, 1)])
+        self.assertEqual(runtime.desktop_app_scroll_buttons(0.2, 0.4), [])
+        self.assertEqual(runtime.desktop_app_scroll_buttons(0, 1e9), [(5, runtime.DESKTOP_APP_MAX_SCROLL_STEPS)])
+
+    def test_key_spec_maps_primary_modifier_to_control(self):
+        self.assertEqual(runtime.desktop_app_key_spec("shift+cmd+A"), ("a", runtime.X_SHIFT_MASK | runtime.X_CONTROL_MASK))
+        self.assertEqual(runtime.desktop_app_key_spec("pagedown"), ("pagedown", 0))
+        with self.assertRaisesRegex(ValueError, "unsupported modifier"):
+            runtime.desktop_app_key_spec("hyper+a")
+
+    def test_keysyms_follow_the_x11_unicode_rule(self):
+        self.assertEqual(runtime.desktop_app_keysym_for_char("a"), 0x61)
+        self.assertEqual(runtime.desktop_app_keysym_for_char("\u00e9"), 0xE9)
+        self.assertEqual(runtime.desktop_app_keysym_for_char("\u20ac"), 0x010020AC)
+
+    def test_blocklist_and_event_layout(self):
+        self.assertTrue(runtime.desktop_app_is_blocked("Bitwarden", None, "Vault"))
+        self.assertFalse(runtime.desktop_app_is_blocked("gedit", "gedit", "notes.txt"))
+        if ctypes.sizeof(ctypes.c_void_p) == 8:
+            # XEvent is a union padded to 24 longs; a smaller struct would let XSendEvent read past it.
+            self.assertEqual(ctypes.sizeof(runtime.XEvent), 192)
+            self.assertEqual(ctypes.sizeof(runtime.XWindowAttributes), 136)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-import type { DesktopAppWindow } from '../../shared/desktop-app-types'
+import type { DesktopAppTarget, DesktopAppWindow } from '../../shared/desktop-app-types'
 
 // Validates the helper's `listDesktopWindows` payload instead of trusting its shape.
 export function parseDesktopAppWindows(result: unknown): DesktopAppWindow[] {
@@ -30,6 +30,24 @@ export function parseDesktopAppWindows(result: unknown): DesktopAppWindow[] {
       }
     ]
   })
+}
+
+/**
+ * The listed window `target` names. Why: the renderer sends both ids, but only the native list
+ * says which pid owns a window, so a pair the list does not confirm is never authorized.
+ */
+export function resolveListedTarget(
+  windows: readonly DesktopAppWindow[],
+  { windowId, pid }: DesktopAppTarget
+): DesktopAppTarget {
+  const listed = windows.find((w) => w.windowId === windowId)
+  if (!listed) {
+    throw new Error(`Window ${windowId} is no longer open. Pick the app window again.`)
+  }
+  if (listed.pid !== pid) {
+    throw new Error(`Window ${windowId} does not belong to process ${pid}.`)
+  }
+  return { windowId: listed.windowId, pid: listed.pid }
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

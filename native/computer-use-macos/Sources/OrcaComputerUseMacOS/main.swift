@@ -9,7 +9,7 @@ import ScreenCaptureKit
 
 private let providerName = "orca-computer-use-macos"
 private let providerVersion = "1.0.0"
-private let providerProtocolVersion = 1
+private let providerProtocolVersion = 2
 
 struct Request: Decodable {
     let id: Int
@@ -532,6 +532,10 @@ final class Provider {
                     "dialogs": false,
                     "dock": false,
                     "menubar": false,
+                ],
+                "desktopApp": [
+                    "listWindows": true,
+                    "input": true,
                 ],
             ],
         ]
@@ -2968,7 +2972,7 @@ private enum DesktopAppBridge {
             // Why: Chromium fills its AX tree lazily; the first hit after enabling it can miss.
             for attempt in 0..<(justPrepared ? 2 : 1) {
                 if attempt > 0 { usleep(300_000) }
-                if let hit = hitTest(appElement, point), performClick(on: hit, button: button) != nil {
+                if let hit = hitTest(appElement, point, windowId: windowId), performClick(on: hit, button: button) != nil {
                     return "accessibility"
                 }
             }
@@ -2989,9 +2993,15 @@ private enum DesktopAppBridge {
         return true
     }
 
-    private static func hitTest(_ appElement: AXUIElement, _ point: CGPoint) -> AXUIElement? {
+    private static func hitTest(_ appElement: AXUIElement, _ point: CGPoint, windowId: CGWindowID) -> AXUIElement? {
         var element: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(appElement, Float(point.x), Float(point.y), &element) == .success else {
+        guard AXUIElementCopyElementAtPosition(appElement, Float(point.x), Float(point.y), &element) == .success,
+              let element else {
+            return nil
+        }
+        // Why: the hit test spans every window of the app; another window of it covering the
+        // target must not get the press. The synthetic path then targets the window by id.
+        guard let window = containingWindow(element), windowNumber(window) == windowId else {
             return nil
         }
         return element
