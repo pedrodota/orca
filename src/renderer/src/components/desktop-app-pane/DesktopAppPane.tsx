@@ -4,6 +4,7 @@ import { DesktopAppPaneToolbar, windowLabel } from './desktop-app-pane-toolbar'
 import { DesktopAppWindowView } from './DesktopAppWindowView'
 import { useDesktopAppCapture } from './use-desktop-app-capture'
 import { useDesktopAppWindows } from './use-desktop-app-windows'
+import { useReleaseAgentBlockOnClose } from './use-release-agent-block-on-close'
 import { translate } from '@/i18n/i18n'
 
 type DesktopAppPaneProps = {
@@ -15,6 +16,7 @@ type DesktopAppPaneProps = {
 export default function DesktopAppPane({ tab, isActive }: DesktopAppPaneProps): React.JSX.Element {
   const windows = useDesktopAppWindows(tab.id, isActive)
   const capture = useDesktopAppCapture(windows.selected, isActive)
+  useReleaseAgentBlockOnClose(tab.id, windows.selected?.pid ?? null)
   const [inputError, setInputError] = useState<string | null>(null)
   const error = windows.error ?? capture.error ?? inputError
 

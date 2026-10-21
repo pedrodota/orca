@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ComputerActionResult } from '../../shared/runtime-types'
 import type { DesktopAppAgentActivity, DesktopAppAgentBlock } from '../../shared/desktop-app-types'
+import { parseDesktopAppSelector, selectorNamesApp } from '../../shared/desktop-app-selector'
 import { isRecord } from './desktop-app-window-list'
 import { RuntimeClientError } from '../computer/runtime-client-error'
 import { COMPUTER_ERROR_CODES, type ComputerAppInfo } from '../../shared/computer-use-runtime-types'
@@ -27,6 +28,7 @@ export function allowDesktopAppAgent(pid: number): void {
 }
 
 export function isDesktopAppAgentBlocked(pid: number): boolean {
+  pruneExitedApps()
   return blockedApps.has(pid)
 }
 
@@ -36,13 +38,13 @@ export function resetDesktopAppAgentControlForTest(): void {
 }
 
 export function findBlockedDesktopApp(selector: string | null): DesktopAppAgentBlock | null {
-  if (!selector) {
+  const parsed = parseDesktopAppSelector(selector)
+  if (!parsed) {
     return null
   }
-  const trimmed = trimLikeNative(selector)
-  const pid = parsePidSelector(trimmed)
+  pruneExitedApps()
   for (const block of blockedApps.values()) {
-    if (pid !== null ? block.pid === pid : matchesAppName(block, trimmed)) {
+    if (parsed.kind === 'pid' ? block.pid === parsed.pid : selectorNamesApp(parsed.name, block)) {
       return block
     }
   }
@@ -51,32 +53,66 @@ export function findBlockedDesktopApp(selector: string | null): DesktopAppAgentB
 
 /** The app this selector resolves to with the native provider's own rules (resolveApp in main.swift). */
 export function resolveSelectorPid(selector: string, apps: ComputerAppInfo[]): number | null {
-  const trimmed = trimLikeNative(selector)
-  const pid = parsePidSelector(trimmed)
-  if (pid !== null) {
-    return pid
+  const parsed = parseDesktopAppSelector(selector)
+  if (!parsed || parsed.kind === 'pid') {
+    return parsed?.pid ?? null
   }
-  const app = apps.find(
-    (candidate) => sameName(candidate.name, trimmed) || sameName(candidate.bundleId, trimmed)
+  const app = apps.find((candidate) =>
+    selectorNamesApp(parsed.name, { appName: candidate.name, bundleId: candidate.bundleId })
   )
   return app?.pid ?? null
+}
+
+// Why: a block names one running process. Once it exits, its pid can be handed to an unrelated
+// app, which must not inherit the block, and the user has nothing left to allow again.
+function pruneExitedApps(): void {
+  for (const pid of blockedApps.keys()) {
+    if (!isProcessAlive(pid)) {
+      blockedApps.delete(pid)
+    }
+  }
+}
+
+function pruneReusedPids(apps: ComputerAppInfo[]): void {
+  for (const app of apps) {
+    const block = blockedApps.get(app.pid)
+    if (block && !sameApp(block, app)) {
+      blockedApps.delete(app.pid)
+    }
+  }
+}
+
+function sameApp(block: DesktopAppAgentBlock, app: ComputerAppInfo): boolean {
+  return block.bundleId !== null && app.bundleId
+    ? block.bundleId === app.bundleId
+    : block.appName === app.name
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    // Signal 0 only probes the process; it works the same on macOS, Linux and Windows.
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    // EPERM: the process exists but belongs to another user.
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
 }
 
 async function findBlockedTarget(
   selector: string | null,
   listApps: ListRunningApps
 ): Promise<DesktopAppAgentBlock | null> {
+  pruneExitedApps()
   if (!selector || blockedApps.size === 0) {
     return null
   }
-  const direct = findBlockedDesktopApp(selector)
-  if (direct) {
-    return direct
-  }
+  const apps = await listApps()
+  pruneReusedPids(apps)
   // Why: the block must hold for every spelling the native provider accepts for that app, so the
   // final word is the pid the selector resolves to, not how this module reads the text.
-  const pid = resolveSelectorPid(selector, await listApps())
-  return pid === null ? null : (blockedApps.get(pid) ?? null)
+  const pid = resolveSelectorPid(selector, apps)
+  return findBlockedDesktopApp(selector) ?? (pid === null ? null : (blockedApps.get(pid) ?? null))
 }
 
 export async function runComputerActionWithActivity(
@@ -95,7 +131,8 @@ export async function runComputerActionWithActivity(
     )
   }
   const activityId = randomUUID()
-  const startPid = appSelector ? parsePidSelector(trimLikeNative(appSelector)) : null
+  const parsedSelector = parseDesktopAppSelector(appSelector)
+  const startPid = parsedSelector?.kind === 'pid' ? parsedSelector.pid : null
   const base = { activityId, method, appSelector }
   emit({
     ...base,
@@ -142,31 +179,6 @@ function emit(activity: DesktopAppAgentActivity): void {
     // Why: an indicator failure must never fail the agent's action.
     console.warn('[desktop-app] activity listener failed:', error)
   }
-}
-
-function matchesAppName(block: DesktopAppAgentBlock, selector: string): boolean {
-  return sameName(block.appName, selector) || sameName(block.bundleId, selector)
-}
-
-// Why: String.trim() misses U+0085, which Swift's `.whitespacesAndNewlines` strips, so a selector
-// like "\u0085pid:5" would otherwise read as an unknown app here and as pid 5 in the helper.
-const NATIVE_WHITESPACE_EDGES = /^[\p{Z}\t-\r\u0085]+|[\p{Z}\t-\r\u0085]+$/gu
-
-function trimLikeNative(selector: string): string {
-  return selector.replace(NATIVE_WHITESPACE_EDGES, '')
-}
-
-// Case-insensitive, accent-sensitive, like `caseInsensitiveCompare` in main.swift. Fixed 'und'
-// locale so the match never depends on the user's system language.
-function sameName(name: string | null | undefined, selector: string): boolean {
-  return name != null && name.localeCompare(selector, 'und', { sensitivity: 'accent' }) === 0
-}
-
-// Same grammar as parsePid in main.swift: lowercase prefix, then an Int32 (optional sign) above 0.
-function parsePidSelector(selector: string): number | null {
-  const match = /^pid:([+-]?\d+)$/.exec(selector)
-  const pid = match ? Number(match[1]) : Number.NaN
-  return Number.isInteger(pid) && pid > 0 && pid <= 2_147_483_647 ? pid : null
 }
 
 function pointFromParams(record: Record<string, unknown>): { x: number; y: number } | null {
