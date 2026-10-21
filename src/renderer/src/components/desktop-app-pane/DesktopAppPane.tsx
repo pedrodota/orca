@@ -48,8 +48,8 @@ export default function DesktopAppPane({ tab, isActive }: DesktopAppPaneProps): 
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-auto bg-muted scrollbar-sleek px-6 py-8">
           <p className="text-xs text-muted-foreground">
             {translate(
-              'auto.components.desktop.app.pane.DesktopAppPane.4bc198fe10',
-              'Pick a Mac app window to show it here. You and your agents can click, scroll and type in it without leaving Orca.'
+              'auto.components.desktop.app.pane.DesktopAppPane.c294a5cd7e',
+              'Pick an app window to show it here. You and your agents can click, scroll and type in it without leaving Orca.'
             )}
           </p>
           <div className="flex w-full max-w-md flex-col gap-1">

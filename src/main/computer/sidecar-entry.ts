@@ -1,6 +1,5 @@
 import { computerProviderUnavailableMessage } from './computer-provider-unavailable-message'
 import { currentComputerProvider, shutdownComputerProviders } from './computer-provider-lifecycle'
-import { MacOSNativeProviderClient } from './macos-native-provider-client'
 import { RuntimeClientError } from './runtime-client-error'
 
 type SidecarRequest = {
@@ -94,12 +93,8 @@ async function dispatch(method: string, params: Record<string, unknown>): Promis
     }
     case 'listDesktopWindows':
     case 'desktopInput': {
-      if (!(provider instanceof MacOSNativeProviderClient)) {
-        throw new RuntimeClientError(
-          'unsupported_capability',
-          'Desktop App panes are only available on macOS'
-        )
-      }
+      // Why: each provider owns its platform's window bridge; Linux Wayland and other
+      // unsupported setups answer unsupported_capability from the runtime itself.
       return await provider.desktopApp(method, params)
     }
     default:

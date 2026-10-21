@@ -177,7 +177,7 @@ export function buildTabCreateMenuOptions(
       ),
       keywords: [
         translate('auto.components.tab.bar.tab.create.menu.options.d0b6a5b6ff', 'desktop app'),
-        translate('auto.components.tab.bar.tab.create.menu.options.9ed0a4d5b8', 'mac app'),
+        translate('auto.components.tab.bar.tab.create.menu.options.f05611f5bd', 'app window'),
         translate('auto.components.tab.bar.tab.create.menu.options.5a1b0e2d40', 'native app'),
         translate('auto.components.tab.bar.tab.create.menu.options.cd5b036f44', 'window'),
         translate('auto.components.tab.bar.tab.create.menu.options.d364c9667c', 'computer use')

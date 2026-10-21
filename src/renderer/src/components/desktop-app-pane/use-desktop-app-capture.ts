@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { translate } from '@/i18n/i18n'
 import type { DesktopAppTarget } from '../../../../shared/desktop-app-types'
 import { errorMessage } from '../../../../shared/error-message'
+import { isMacDesktopAppHost } from '@/lib/open-desktop-app-tab'
 
 export type DesktopAppCaptureState = {
   stream: MediaStream | null
@@ -104,12 +105,18 @@ export function useDesktopAppCapture(
 }
 
 function describeCaptureError(err: unknown): string {
-  // Why: Chromium reports a macOS Screen Recording denial as a bare "Permission denied".
+  // Why: Chromium reports a denied screen-capture permission as a bare "Permission denied";
+  // only the Mac has a fixed settings path worth naming, elsewhere the wording stays generic.
   if (err instanceof DOMException && err.name === 'NotAllowedError') {
-    return translate(
-      'auto.components.desktop.app.pane.use.desktop.app.capture.84bd9c534b',
-      'macOS blocked the capture. Allow Orca in System Settings › Privacy & Security › Screen Recording, then reopen this tab.'
-    )
+    return isMacDesktopAppHost()
+      ? translate(
+          'auto.components.desktop.app.pane.use.desktop.app.capture.e7c7008edc',
+          'Screen capture was blocked. Allow Orca in System Settings › Privacy & Security › Screen Recording, then reopen this tab.'
+        )
+      : translate(
+          'auto.components.desktop.app.pane.use.desktop.app.capture.2464eff017',
+          'Screen capture was blocked. Allow Orca to capture the screen in your system settings, then reopen this tab.'
+        )
   }
   return errorMessage(err)
 }

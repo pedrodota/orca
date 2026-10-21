@@ -4,6 +4,7 @@ import { errorMessage } from '../../../../shared/error-message'
 import { normalizeWheelDelta } from '../emulator-pane/emulator-screen-gesture'
 import { mapKeyEventToDesktopAppInput } from './desktop-app-key-mapping'
 import { mapElementPointToWindowPoint, type Point } from './desktop-app-point-mapping'
+import { isMacDesktopAppHost } from '@/lib/open-desktop-app-tab'
 
 const CLICK_SLOP_PX = 6
 
@@ -123,7 +124,7 @@ export function useDesktopAppInput(
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {
-      const input = mapKeyEventToDesktopAppInput(event.nativeEvent)
+      const input = mapKeyEventToDesktopAppInput(event.nativeEvent, isMacDesktopAppHost())
       if (!input) {
         return
       }
