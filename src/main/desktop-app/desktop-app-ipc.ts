@@ -4,7 +4,8 @@ import { callComputerSidecarDesktopApp } from '../computer/sidecar-client'
 import { isTrustedUIRenderer } from '../ipc/ui'
 import {
   isDesktopAppWindowAuthorized,
-  prepareDesktopAppCapture
+  prepareDesktopAppCapture,
+  releaseDesktopAppCapture
 } from './desktop-app-capture-source'
 import { parseSendInputArgs, parseTargetArgs } from './desktop-app-ipc-schema'
 import { parseDesktopAppWindows, resolveListedTarget } from './desktop-app-window-list'
@@ -19,6 +20,10 @@ export function registerDesktopAppHandlers(): void {
     const requested = parseTargetArgs(args, 'desktopApp:prepareCapture')
     const target = resolveListedTarget(await listWindows(), requested)
     return await prepareDesktopAppCapture(event.sender, target)
+  })
+  ipcMain.handle('desktopApp:releaseCapture', (event, args: unknown) => {
+    assertTrustedSender(event.sender)
+    releaseDesktopAppCapture(event.sender, parseTargetArgs(args, 'desktopApp:releaseCapture'))
   })
   ipcMain.handle(
     'desktopApp:sendInput',
