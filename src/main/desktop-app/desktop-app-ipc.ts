@@ -7,17 +7,18 @@ import {
   prepareDesktopAppCapture
 } from './desktop-app-capture-source'
 import { parseSendInputArgs, parseTargetArgs } from './desktop-app-ipc-schema'
-import { parseDesktopAppWindows } from './desktop-app-window-list'
+import { parseDesktopAppWindows, resolveListedTarget } from './desktop-app-window-list'
 
 export function registerDesktopAppHandlers(): void {
   ipcMain.handle('desktopApp:listWindows', async (event): Promise<DesktopAppWindow[]> => {
     assertTrustedSender(event.sender)
-    return parseDesktopAppWindows(await callComputerSidecarDesktopApp('listDesktopWindows', {}))
+    return await listWindows()
   })
-  ipcMain.handle('desktopApp:prepareCapture', (event, args: unknown) => {
+  ipcMain.handle('desktopApp:prepareCapture', async (event, args: unknown) => {
     assertTrustedSender(event.sender)
-    const target = parseTargetArgs(args, 'desktopApp:prepareCapture')
-    return prepareDesktopAppCapture(event.sender, target)
+    const requested = parseTargetArgs(args, 'desktopApp:prepareCapture')
+    const target = resolveListedTarget(await listWindows(), requested)
+    return await prepareDesktopAppCapture(event.sender, target)
   })
   ipcMain.handle(
     'desktopApp:sendInput',
@@ -35,6 +36,10 @@ export function registerDesktopAppHandlers(): void {
       return { path: path === 'accessibility' ? 'accessibility' : 'synthetic' }
     }
   )
+}
+
+async function listWindows(): Promise<DesktopAppWindow[]> {
+  return parseDesktopAppWindows(await callComputerSidecarDesktopApp('listDesktopWindows', {}))
 }
 
 function assertTrustedSender(sender: Electron.WebContents): void {

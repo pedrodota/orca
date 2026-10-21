@@ -13,6 +13,7 @@ const authorizedWindows = new Map<number, Set<string>>()
 const ARMED_SOURCE_TTL_MS = 10_000
 const sessionsWithHandler = new WeakSet<Session>()
 
+/** Arms `target` (already checked against the native window list) for the sender's next getDisplayMedia. */
 export async function prepareDesktopAppCapture(
   sender: Electron.WebContents,
   { windowId, pid }: DesktopAppTarget
