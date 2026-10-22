@@ -3,6 +3,7 @@ import type { ComputerActionResult } from '../../shared/runtime-types'
 import type { DesktopAppAgentActivity, DesktopAppAgentBlock } from '../../shared/desktop-app-types'
 import { parseDesktopAppSelector, selectorNamesApp } from '../../shared/desktop-app-selector'
 import { isRecord } from './desktop-app-window-list'
+import { processStartIdentity } from './desktop-app-process-identity'
 import { RuntimeClientError } from '../computer/runtime-client-error'
 import { COMPUTER_ERROR_CODES, type ComputerAppInfo } from '../../shared/computer-use-runtime-types'
 
@@ -11,9 +12,12 @@ import { COMPUTER_ERROR_CODES, type ComputerAppInfo } from '../../shared/compute
 type ActivityListener = (activity: DesktopAppAgentActivity) => void
 // The running apps exactly as the native provider sees them when it resolves `--app`.
 export type ListRunningApps = () => Promise<ComputerAppInfo[]>
+// The pid the native provider itself resolves an `--app` selector to, or null when none.
+export type ResolveAppPid = (selector: string) => Promise<number | null>
 
 let activityListener: ActivityListener | null = null
 const blockedApps = new Map<number, DesktopAppAgentBlock>()
+const blockIdentities = new Map<number, string>()
 
 export function setDesktopAppActivityListener(listener: ActivityListener | null): void {
   activityListener = listener
@@ -21,10 +25,17 @@ export function setDesktopAppActivityListener(listener: ActivityListener | null)
 
 export function blockDesktopAppAgent(block: DesktopAppAgentBlock): void {
   blockedApps.set(block.pid, block)
+  const identity = processStartIdentity(block.pid)
+  if (identity === null) {
+    blockIdentities.delete(block.pid)
+  } else {
+    blockIdentities.set(block.pid, identity)
+  }
 }
 
 export function allowDesktopAppAgent(pid: number): void {
   blockedApps.delete(pid)
+  blockIdentities.delete(pid)
 }
 
 export function isDesktopAppAgentBlocked(pid: number): boolean {
@@ -34,6 +45,7 @@ export function isDesktopAppAgentBlocked(pid: number): boolean {
 
 export function resetDesktopAppAgentControlForTest(): void {
   blockedApps.clear()
+  blockIdentities.clear()
   activityListener = null
 }
 
@@ -68,16 +80,25 @@ export function resolveSelectorPid(selector: string, apps: ComputerAppInfo[]): n
 function pruneExitedApps(): void {
   for (const pid of blockedApps.keys()) {
     if (!isProcessAlive(pid)) {
-      blockedApps.delete(pid)
+      allowDesktopAppAgent(pid)
     }
   }
 }
 
 function pruneReusedPids(apps: ComputerAppInfo[]): void {
-  for (const app of apps) {
-    const block = blockedApps.get(app.pid)
-    if (block && !sameApp(block, app)) {
-      blockedApps.delete(app.pid)
+  for (const [pid, block] of blockedApps) {
+    const identity = blockIdentities.get(pid)
+    if (identity !== undefined) {
+      if (processStartIdentity(pid) !== identity) {
+        allowDesktopAppAgent(pid)
+      }
+      continue
+    }
+    // Why not on Linux: the block names come from X11 WM_CLASS and listApps from AT-SPI, so
+    // the same live app ("Navigator" vs "Firefox") would look like a reused pid.
+    const app = process.platform === 'linux' ? undefined : apps.find((a) => a.pid === pid)
+    if (app && !sameApp(block, app)) {
+      allowDesktopAppAgent(pid)
     }
   }
 }
@@ -101,7 +122,8 @@ function isProcessAlive(pid: number): boolean {
 
 async function findBlockedTarget(
   selector: string | null,
-  listApps: ListRunningApps
+  listApps: ListRunningApps,
+  resolveAppPid: ResolveAppPid
 ): Promise<DesktopAppAgentBlock | null> {
   pruneExitedApps()
   if (!selector || blockedApps.size === 0) {
@@ -109,21 +131,28 @@ async function findBlockedTarget(
   }
   const apps = await listApps()
   pruneReusedPids(apps)
-  // Why: the block must hold for every spelling the native provider accepts for that app, so the
-  // final word is the pid the selector resolves to, not how this module reads the text.
-  const pid = resolveSelectorPid(selector, apps)
-  return findBlockedDesktopApp(selector) ?? (pid === null ? null : (blockedApps.get(pid) ?? null))
+  const direct = findBlockedDesktopApp(selector)
+  if (direct) {
+    return direct
+  }
+  // Why: the block must hold for every spelling a provider accepts for that app ("PID:5", "5",
+  // "notepad.exe", a window title substring on Windows and Linux), so the final word is the pid
+  // the provider itself resolves the selector to, not how this module reads the text.
+  const pids = [resolveSelectorPid(selector, apps), await resolveAppPid(selector)]
+  const pid = pids.find((candidate) => candidate !== null && blockedApps.has(candidate))
+  return pid === undefined || pid === null ? null : (blockedApps.get(pid) ?? null)
 }
 
 export async function runComputerActionWithActivity(
   method: string,
   params: unknown,
   run: () => Promise<ComputerActionResult>,
-  listApps: ListRunningApps
+  listApps: ListRunningApps,
+  resolveAppPid: ResolveAppPid
 ): Promise<ComputerActionResult> {
   const record = isRecord(params) ? params : {}
   const appSelector = typeof record.app === 'string' ? record.app : null
-  const blocked = await findBlockedTarget(appSelector, listApps)
+  const blocked = await findBlockedTarget(appSelector, listApps, resolveAppPid)
   if (blocked) {
     throw new RuntimeClientError(
       COMPUTER_ERROR_CODES.desktop_app_stopped_by_user,

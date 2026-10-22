@@ -40,8 +40,18 @@ function runTrackedComputerAction(
     `computer.${method}`,
     params,
     () => callComputerSidecarAction(method, params),
-    async () => (await callComputerSidecarListApps()).apps
+    async () => (await callComputerSidecarListApps()).apps,
+    resolveAppPidWithProvider
   )
+}
+
+async function resolveAppPidWithProvider(selector: string): Promise<number | null> {
+  try {
+    return (await callComputerSidecarListWindows({ app: selector })).app.pid
+  } catch {
+    // Not found (or not resolvable): the action itself will fail the same way.
+    return null
+  }
 }
 
 export function resetComputerSessionsForTest(): void {

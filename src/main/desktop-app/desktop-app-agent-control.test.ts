@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComputerActionResult } from '../../shared/runtime-types'
 import type { DesktopAppAgentActivity } from '../../shared/desktop-app-types'
 import { COMPUTER_ERROR_CODES } from '../../shared/computer-use-runtime-types'
+import { processStartIdentity } from './desktop-app-process-identity'
 import {
   allowDesktopAppAgent,
   blockDesktopAppAgent,
@@ -13,6 +14,7 @@ import {
 } from './desktop-app-agent-control'
 
 const PEPPER = { pid: 4242, appName: 'PEPPER', bundleId: 'app.moovefy.pepper' }
+const NO_PROVIDER_PID = async (): Promise<number | null> => null
 const RUNNING_APPS = async () => [
   { name: 'PEPPER', bundleId: PEPPER.bundleId, pid: PEPPER.pid },
   { name: 'Safari', bundleId: 'com.apple.Safari', pid: 7 }
@@ -36,6 +38,8 @@ function actionResult(
     action: { path: 'accessibility', targetPoint: { x: 68, y: 235 }, ...overrides }
   }
 }
+
+vi.mock('./desktop-app-process-identity', () => ({ processStartIdentity: vi.fn(() => null) }))
 
 const exitedPids = new Set<number>()
 
@@ -95,7 +99,8 @@ describe('runComputerActionWithActivity', () => {
       'computer.click',
       { app: 'PEPPER', x: 10, y: 20, windowId: 77 },
       async () => actionResult(),
-      RUNNING_APPS
+      RUNNING_APPS,
+      NO_PROVIDER_PID
     )
 
     expect(result.action?.targetPoint).toEqual({ x: 68, y: 235 })
@@ -128,7 +133,8 @@ describe('runComputerActionWithActivity', () => {
         async () => {
           throw new Error('boom')
         },
-        RUNNING_APPS
+        RUNNING_APPS,
+        NO_PROVIDER_PID
       )
     ).rejects.toThrow('boom')
 
@@ -147,7 +153,8 @@ describe('runComputerActionWithActivity', () => {
         'computer.typeText',
         { app: 'PEPPER', text: 'x' },
         run,
-        RUNNING_APPS
+        RUNNING_APPS,
+        NO_PROVIDER_PID
       )
     ).rejects.toMatchObject({
       code: COMPUTER_ERROR_CODES.desktop_app_stopped_by_user,
@@ -163,11 +170,17 @@ describe('runComputerActionWithActivity', () => {
 
     for (const app of ['pid:+4242', 'pid:04242', 'App.Moovefy.Pepper']) {
       await expect(
-        runComputerActionWithActivity('computer.click', { app }, run, RUNNING_APPS)
+        runComputerActionWithActivity('computer.click', { app }, run, RUNNING_APPS, NO_PROVIDER_PID)
       ).rejects.toMatchObject({ code: COMPUTER_ERROR_CODES.desktop_app_stopped_by_user })
     }
     await expect(
-      runComputerActionWithActivity('computer.click', { app: 'Safari' }, run, RUNNING_APPS)
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'Safari' },
+        run,
+        RUNNING_APPS,
+        NO_PROVIDER_PID
+      )
     ).resolves.toBeDefined()
     expect(run).toHaveBeenCalledTimes(1)
   })
@@ -183,7 +196,8 @@ describe('runComputerActionWithActivity', () => {
         'computer.click',
         { app: 'PEPPER' },
         async () => actionResult(),
-        RUNNING_APPS
+        RUNNING_APPS,
+        NO_PROVIDER_PID
       )
     ).resolves.toMatchObject({ action: { path: 'accessibility' } })
     warn.mockRestore()
@@ -197,8 +211,70 @@ describe('runComputerActionWithActivity', () => {
     ]
 
     await expect(
-      runComputerActionWithActivity('computer.click', { app: 'pid:4242' }, run, reused)
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'pid:4242' },
+        run,
+        reused,
+        NO_PROVIDER_PID
+      )
     ).resolves.toBeDefined()
     expect(isDesktopAppAgentBlocked(PEPPER.pid)).toBe(false)
+  })
+
+  it('blocks spellings only the provider resolves (Windows and Linux selector grammars)', async () => {
+    const notepad = { pid: 4321, appName: 'notepad', bundleId: 'notepad' }
+    blockDesktopAppAgent(notepad)
+    const run = vi.fn(async () => actionResult())
+    const providerPid = async (selector: string) => (selector === 'Safari' ? 7 : notepad.pid)
+
+    for (const app of ['notepad.exe', 'PID:4321', '4321', 'Untitled']) {
+      await expect(
+        runComputerActionWithActivity('computer.click', { app }, run, RUNNING_APPS, providerPid)
+      ).rejects.toMatchObject({ code: COMPUTER_ERROR_CODES.desktop_app_stopped_by_user })
+    }
+    await expect(
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'Safari' },
+        run,
+        RUNNING_APPS,
+        providerPid
+      )
+    ).resolves.toBeDefined()
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a live block whose names differ between providers, and drops it once the pid is reused', async () => {
+    const identity = vi.mocked(processStartIdentity)
+    identity.mockReturnValue('1000')
+    // X11 WM_CLASS names in the pane; AT-SPI names in listApps, for the same live process.
+    const firefox = { pid: 900, appName: 'firefox', bundleId: 'Navigator' }
+    blockDesktopAppAgent(firefox)
+    const run = vi.fn(async () => actionResult())
+    const atspi = async () => [{ name: 'Firefox', bundleId: 'Firefox', pid: firefox.pid }]
+
+    await expect(
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'pid:900' },
+        run,
+        atspi,
+        NO_PROVIDER_PID
+      )
+    ).rejects.toMatchObject({ code: COMPUTER_ERROR_CODES.desktop_app_stopped_by_user })
+    expect(run).not.toHaveBeenCalled()
+
+    identity.mockReturnValue('2000')
+    await expect(
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'pid:900' },
+        run,
+        atspi,
+        NO_PROVIDER_PID
+      )
+    ).resolves.toBeDefined()
+    expect(isDesktopAppAgentBlocked(firefox.pid)).toBe(false)
   })
 })
