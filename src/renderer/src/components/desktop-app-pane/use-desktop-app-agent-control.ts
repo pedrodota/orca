@@ -32,11 +32,14 @@ export function useDesktopAppAgentControl(
     const paneTarget = { windowId, pid, appName, bundleId }
     let disposed = false
     // Why: main keeps blocking the pid across a remount or window-list blip; show Allow again.
-    void api.isAgentBlocked({ pid }).then((blocked) => {
-      if (blocked && !disposed) {
-        dispatch({ type: 'hydrateStopped' })
-      }
-    })
+    void api
+      .isAgentBlocked({ pid })
+      .then((blocked) => {
+        if (blocked && !disposed) {
+          dispatch({ type: 'hydrateStopped' })
+        }
+      })
+      .catch((error: unknown) => console.warn('[desktop-app] isAgentBlocked failed:', error))
     // Why: every activity reaches the reducer so an `end` that resolved elsewhere still closes
     // the action its matching `start` opened here.
     const unsubscribe = api.onAgentActivity((activity) => {
