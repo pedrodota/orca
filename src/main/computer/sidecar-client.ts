@@ -1,6 +1,5 @@
 import { fork, type ChildProcess } from 'node:child_process'
-import { getAppEnvironment, hasAppEnvironment } from '../../shared/app-environment'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import type {
   ComputerActionResult,
   ComputerListAppsResult,
@@ -13,6 +12,10 @@ import { isComputerSidecarDiagnostic, logComputerDiagnostic } from './computer-s
 import { validateComputerSidecarPasteText } from './computer-sidecar-paste-validation'
 import { RuntimeClientError } from './runtime-client-error'
 import type { NativeDesktopAppMethod } from './macos-native-provider-contract'
+import { getForkedChildEntryPath } from '../forked-child-entry-path'
+
+// orcad ships it beside orcad.js (ORCAD_CHILD_ENTRY_POINTS); the desktop under out/main.
+export const COMPUTER_SIDECAR_ENTRY_FILENAME = 'computer-sidecar.js'
 
 type ComputerSidecarMethod =
   | 'capabilities'
@@ -103,30 +106,13 @@ export function resetComputerSidecarForTest(): void {
 
 function getComputerSidecar(): ComputerSidecarProcess {
   if (!sidecar) {
-    sidecar = new ComputerSidecarProcess(getComputerSidecarEntryPath())
+    sidecar = new ComputerSidecarProcess(getForkedChildEntryPath(COMPUTER_SIDECAR_ENTRY_FILENAME))
   }
   return sidecar
 }
 
-function getComputerSidecarEntryPath(): string {
-  const app = loadElectronApp()
-  const appPath = app?.getAppPath() ?? process.cwd()
-  const isPackaged = app?.isPackaged ?? false
-  // Why: packaged sidecars must be forked from app.asar.unpacked because
-  // ELECTRON_RUN_AS_NODE bypasses Electron's asar require integration.
-  const basePath = isPackaged ? appPath.replace('app.asar', 'app.asar.unpacked') : appPath
-  return join(basePath, 'out', 'main', 'computer-sidecar.js')
-}
-
-// Why the port and not require('electron'): the literal text fails the plain-Node
-// entry guard even inside a try/catch, and hasAppEnvironment() gives the same
-// "no app root here" answer without it.
-function loadElectronApp(): { getAppPath(): string; isPackaged: boolean } | null {
-  if (!hasAppEnvironment()) {
-    return null
-  }
-  const environment = getAppEnvironment()
-  return { getAppPath: () => environment.getAppPath(), isPackaged: environment.isPackaged() }
+export function computerSidecarMissingMessage(entryPath: string): string {
+  return `Computer use isn't available on this host: its Orca install has no computer-use sidecar (${entryPath}). On an Orca server installed before computer use shipped with it, update or reprovision the server.`
 }
 
 class ComputerSidecarProcess {
@@ -220,6 +206,13 @@ class ComputerSidecarProcess {
     }
     this.cleanupActiveChildListeners()
     this.child = null
+    // Why before fork: a missing entry only surfaces as "exited with code 1", which names nothing.
+    if (!existsSync(this.entryPath)) {
+      throw new RuntimeClientError(
+        'unsupported_capability',
+        computerSidecarMissingMessage(this.entryPath)
+      )
+    }
 
     const child = fork(this.entryPath, [], {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],

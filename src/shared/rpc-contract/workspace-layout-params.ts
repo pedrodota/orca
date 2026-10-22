@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { LIVE_SURFACE_CONTENT_TYPES } from '../tab-types'
 import { isTerminalLeafId } from '../stable-pane-id'
-import { SleepCommand, WakeCommand } from './workspace-layout-sleep-wake-params'
+import { SleepCommand, StartPaneCommand, WakeCommand } from './workspace-layout-sleep-wake-params'
 import { RenameTabsCommand } from './workspace-layout-rename-tabs-params'
 import { EditorFileRecord, EditorViewRecord } from './workspace-layout-editor-file-params'
 import { SetGroupRatiosCommand, SetPaneRatiosCommand } from './workspace-layout-ratio-params'
@@ -81,7 +81,10 @@ const MoveTabCommand = z.object({
   type: z.literal('moveTab'),
   ...OnTab,
   toGroupId: z.string().min(1),
-  index: z.number().int().nonnegative()
+  index: z.number().int().nonnegative(),
+  // Optional so an older main still takes the move; it places by `index`.
+  afterTabId: z.union([z.string().min(1), z.null()]).optional(),
+  isPinned: z.boolean().optional()
 })
 
 /** Main mints the new group's id, or moves a lone tab's group whole. */
@@ -336,6 +339,7 @@ export const LayoutApplyParams = z.object({
     RenameEditorFilesCommand,
     SleepCommand,
     WakeCommand,
+    StartPaneCommand,
     SetDefaultTabsAppliedCommand,
     ApplyDefaultTabsCommand
   ])
