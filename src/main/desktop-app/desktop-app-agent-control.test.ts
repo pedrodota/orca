@@ -13,10 +13,10 @@ import {
   setDesktopAppActivityListener
 } from './desktop-app-agent-control'
 
-const PEPPER = { pid: 4242, appName: 'PEPPER', bundleId: 'app.moovefy.pepper' }
+const NOTES_APP = { pid: 4242, appName: 'Notes', bundleId: 'com.example.notes' }
 const NO_PROVIDER_PID = async (): Promise<number | null> => null
 const RUNNING_APPS = async () => [
-  { name: 'PEPPER', bundleId: PEPPER.bundleId, pid: PEPPER.pid },
+  { name: 'Notes', bundleId: NOTES_APP.bundleId, pid: NOTES_APP.pid },
   { name: 'Safari', bundleId: 'com.apple.Safari', pid: 7 }
 ]
 
@@ -26,8 +26,8 @@ function actionResult(
   return {
     snapshot: {
       id: 's1',
-      app: { name: 'PEPPER', bundleId: PEPPER.bundleId, pid: PEPPER.pid },
-      window: { id: 77, title: 'PEPPER', width: 1280, height: 1016 },
+      app: { name: 'Notes', bundleId: NOTES_APP.bundleId, pid: NOTES_APP.pid },
+      window: { id: 77, title: 'Notes', width: 1280, height: 1016 },
       coordinateSpace: 'window',
       treeText: '',
       elementCount: 0,
@@ -60,33 +60,33 @@ afterEach(() => {
 
 describe('findBlockedDesktopApp', () => {
   it('matches pid selectors, app names and bundle ids case-insensitively', () => {
-    blockDesktopAppAgent(PEPPER)
-    expect(findBlockedDesktopApp('pid:4242')).toEqual(PEPPER)
-    expect(findBlockedDesktopApp('pepper')).toEqual(PEPPER)
-    expect(findBlockedDesktopApp(' APP.MOOVEFY.PEPPER ')).toEqual(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
+    expect(findBlockedDesktopApp('pid:4242')).toEqual(NOTES_APP)
+    expect(findBlockedDesktopApp('notes')).toEqual(NOTES_APP)
+    expect(findBlockedDesktopApp(' COM.EXAMPLE.NOTES ')).toEqual(NOTES_APP)
     expect(findBlockedDesktopApp('pid:1')).toBeNull()
     expect(findBlockedDesktopApp('Safari')).toBeNull()
     expect(findBlockedDesktopApp(null)).toBeNull()
   })
 
   it('trims the same edge characters as the native helper, including U+0085', () => {
-    blockDesktopAppAgent(PEPPER)
-    expect(findBlockedDesktopApp('\u0085pid:4242\u2028')).toEqual(PEPPER)
-    expect(findBlockedDesktopApp('\u00a0PEPPER\t')).toEqual(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
+    expect(findBlockedDesktopApp('\u0085pid:4242\u2028')).toEqual(NOTES_APP)
+    expect(findBlockedDesktopApp('\u00a0NOTES\t')).toEqual(NOTES_APP)
   })
 
   it('forgets the block once the app exits, so a reused pid is not blocked', () => {
-    blockDesktopAppAgent(PEPPER)
-    exitedPids.add(PEPPER.pid)
-    expect(findBlockedDesktopApp('PEPPER')).toBeNull()
+    blockDesktopAppAgent(NOTES_APP)
+    exitedPids.add(NOTES_APP.pid)
+    expect(findBlockedDesktopApp('Notes')).toBeNull()
     exitedPids.clear()
-    expect(isDesktopAppAgentBlocked(PEPPER.pid)).toBe(false)
+    expect(isDesktopAppAgentBlocked(NOTES_APP.pid)).toBe(false)
   })
 
   it('stops matching once the app is allowed again', () => {
-    blockDesktopAppAgent(PEPPER)
-    allowDesktopAppAgent(PEPPER.pid)
-    expect(findBlockedDesktopApp('PEPPER')).toBeNull()
+    blockDesktopAppAgent(NOTES_APP)
+    allowDesktopAppAgent(NOTES_APP.pid)
+    expect(findBlockedDesktopApp('Notes')).toBeNull()
   })
 })
 
@@ -97,7 +97,7 @@ describe('runComputerActionWithActivity', () => {
 
     const result = await runComputerActionWithActivity(
       'computer.click',
-      { app: 'PEPPER', x: 10, y: 20, windowId: 77 },
+      { app: 'Notes', x: 10, y: 20, windowId: 77 },
       async () => actionResult(),
       RUNNING_APPS,
       NO_PROVIDER_PID
@@ -107,7 +107,7 @@ describe('runComputerActionWithActivity', () => {
     expect(activities.map((activity) => activity.phase)).toEqual(['start', 'end'])
     expect(activities[0]).toMatchObject({
       method: 'computer.click',
-      appSelector: 'PEPPER',
+      appSelector: 'Notes',
       pid: null,
       windowId: 77,
       point: { x: 10, y: 20 },
@@ -115,7 +115,7 @@ describe('runComputerActionWithActivity', () => {
     })
     expect(activities[1]).toMatchObject({
       activityId: activities[0].activityId,
-      pid: PEPPER.pid,
+      pid: NOTES_APP.pid,
       windowId: 77,
       point: { x: 68, y: 235 },
       ok: true
@@ -146,29 +146,29 @@ describe('runComputerActionWithActivity', () => {
     const listener = vi.fn()
     const run = vi.fn(async () => actionResult())
     setDesktopAppActivityListener(listener)
-    blockDesktopAppAgent(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
 
     await expect(
       runComputerActionWithActivity(
         'computer.typeText',
-        { app: 'PEPPER', text: 'x' },
+        { app: 'Notes', text: 'x' },
         run,
         RUNNING_APPS,
         NO_PROVIDER_PID
       )
     ).rejects.toMatchObject({
       code: COMPUTER_ERROR_CODES.desktop_app_stopped_by_user,
-      message: 'The user stopped agent control of PEPPER in Orca. Ask them to allow it again.'
+      message: 'The user stopped agent control of Notes in Orca. Ask them to allow it again.'
     })
     expect(run).not.toHaveBeenCalled()
     expect(listener).not.toHaveBeenCalled()
   })
 
   it('blocks every selector spelling the native provider resolves to the stopped app', async () => {
-    blockDesktopAppAgent(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
     const run = vi.fn(async () => actionResult())
 
-    for (const app of ['pid:+4242', 'pid:04242', 'App.Moovefy.Pepper']) {
+    for (const app of ['pid:+4242', 'pid:04242', 'Com.Example.Notes']) {
       await expect(
         runComputerActionWithActivity('computer.click', { app }, run, RUNNING_APPS, NO_PROVIDER_PID)
       ).rejects.toMatchObject({ code: COMPUTER_ERROR_CODES.desktop_app_stopped_by_user })
@@ -194,7 +194,7 @@ describe('runComputerActionWithActivity', () => {
     await expect(
       runComputerActionWithActivity(
         'computer.click',
-        { app: 'PEPPER' },
+        { app: 'Notes' },
         async () => actionResult(),
         RUNNING_APPS,
         NO_PROVIDER_PID
@@ -204,10 +204,10 @@ describe('runComputerActionWithActivity', () => {
   })
 
   it('drops a block whose pid now belongs to another app', async () => {
-    blockDesktopAppAgent(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
     const run = vi.fn(async () => actionResult())
     const reused = async () => [
-      { name: 'Terminal', bundleId: 'com.apple.Terminal', pid: PEPPER.pid }
+      { name: 'Terminal', bundleId: 'com.apple.Terminal', pid: NOTES_APP.pid }
     ]
 
     await expect(
@@ -219,7 +219,7 @@ describe('runComputerActionWithActivity', () => {
         NO_PROVIDER_PID
       )
     ).resolves.toBeDefined()
-    expect(isDesktopAppAgentBlocked(PEPPER.pid)).toBe(false)
+    expect(isDesktopAppAgentBlocked(NOTES_APP.pid)).toBe(false)
   })
 
   it('blocks spellings only the provider resolves (Windows and Linux selector grammars)', async () => {
@@ -281,7 +281,7 @@ describe('runComputerActionWithActivity', () => {
   it('keeps a block when the process identity cannot be read again', async () => {
     const identity = vi.mocked(processStartIdentity)
     identity.mockReturnValue('1000')
-    blockDesktopAppAgent(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
     identity.mockReturnValue(null)
     const run = vi.fn(async () => actionResult())
 
@@ -298,7 +298,7 @@ describe('runComputerActionWithActivity', () => {
   })
 
   it('runs the action against the pid that passed the block check', async () => {
-    blockDesktopAppAgent(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
     const run = vi.fn(async (_params: unknown) => actionResult())
 
     await runComputerActionWithActivity(
@@ -312,7 +312,7 @@ describe('runComputerActionWithActivity', () => {
   })
 
   it('fails closed when a stop is active and the selector cannot be resolved', async () => {
-    blockDesktopAppAgent(PEPPER)
+    blockDesktopAppAgent(NOTES_APP)
     const run = vi.fn(async () => actionResult())
     const providerError = new Error('provider down')
 

@@ -72,7 +72,7 @@ describe('agent control state', () => {
     let state = reduceAgentControl(INITIAL_AGENT_CONTROL_STATE, {
       type: 'activity',
       targetsPane: true,
-      activity: activity({ appSelector: 'PEPPER', point: { x: 5, y: 5 } })
+      activity: activity({ appSelector: 'Notes', point: { x: 5, y: 5 } })
     })
     state = reduceAgentControl(state, {
       type: 'activity',

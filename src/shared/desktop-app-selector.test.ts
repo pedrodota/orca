@@ -20,12 +20,12 @@ describe('parseDesktopAppSelector', () => {
 })
 
 describe('selectorNamesApp', () => {
-  const app = { appName: 'PEPPER', bundleId: 'app.moovefy.pepper' }
+  const app = { appName: 'Notes', bundleId: 'com.example.notes' }
 
   it('matches name or bundle id case-insensitively but accent-sensitively', () => {
-    expect(selectorNamesApp('pepper', app)).toBe(true)
-    expect(selectorNamesApp('APP.MOOVEFY.PEPPER', app)).toBe(true)
+    expect(selectorNamesApp('notes', app)).toBe(true)
+    expect(selectorNamesApp('COM.EXAMPLE.NOTES', app)).toBe(true)
     expect(selectorNamesApp('pépper', app)).toBe(false)
-    expect(selectorNamesApp('pepper', { appName: 'Other', bundleId: null })).toBe(false)
+    expect(selectorNamesApp('notes', { appName: 'Other', bundleId: null })).toBe(false)
   })
 })
