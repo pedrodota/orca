@@ -356,5 +356,21 @@ class DesktopAppPointerTest(unittest.TestCase):
         self.assertEqual(session.sent, [])
 
 
+class DesktopAppKeycodeTest(unittest.TestCase):
+    def session(self, levels):
+        x = types.SimpleNamespace(
+            XKeysymToKeycode=lambda _display, _keysym: 24,
+            XkbKeycodeToKeysym=lambda _display, _keycode, _group, level: levels[level] if level < len(levels) else 0,
+        )
+        return types.SimpleNamespace(x=x, display=None)
+
+    def test_uses_shift_only_for_the_shifted_level(self):
+        self.assertEqual(runtime.desktop_app_keycode(self.session([0x71, 0x51]), 0x71), (24, False))
+        self.assertEqual(runtime.desktop_app_keycode(self.session([0x71, 0x51]), 0x51), (24, True))
+
+    def test_rejects_a_keysym_that_needs_altgr(self):
+        self.assertIsNone(runtime.desktop_app_keycode(self.session([0x71, 0x51, 0x40]), 0x40))
+
+
 if __name__ == "__main__":
     unittest.main()
