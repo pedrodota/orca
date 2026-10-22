@@ -28,6 +28,7 @@ export type DesktopAppInput =
       x: number
       y: number
       button: 'left' | 'right'
+      // One press per input; this is its position in a double or triple click (mouseup detail).
       clickCount: number
     }
   | { kind: 'scroll'; x: number; y: number; deltaX: number; deltaY: number }

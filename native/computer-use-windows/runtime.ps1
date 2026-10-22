@@ -1448,13 +1448,16 @@ function Send-OrcaDesktopClick($Target, $Payload) {
     $child = [OrcaDesktopAppWin32]::ChildAt($Target.handle, $point.x, $point.y)
     $lParam = [OrcaDesktopAppWin32]::ClientLParam($child, $point.x, $point.y)
     [OrcaDesktopAppWin32]::Post($child, $DesktopAppMessages.MouseMove, 0, $lParam)
-    for ($index = 1; $index -le $count; $index++) {
-        # Why: real double clicks arrive as down, up, DBLCLK, up; apps key double-click
-        # handling off the DBLCLK message, not off two downs.
-        $message = if ($index -eq 2) { $double } else { $down }
-        [OrcaDesktopAppWin32]::Post($child, $message, $buttonFlag, $lParam)
-        [OrcaDesktopAppWin32]::Post($child, $up, 0, $lParam)
-    }
+    # Why one press: the pane sends one click per real press, with clickCount as that press's
+    # position in the sequence. Real double clicks arrive as down, up, DBLCLK, up, so the
+    # second press is the DBLCLK message.
+    $message = Get-OrcaDesktopPressMessage $count $down $double
+    [OrcaDesktopAppWin32]::Post($child, $message, $buttonFlag, $lParam)
+    [OrcaDesktopAppWin32]::Post($child, $up, 0, $lParam)
+}
+
+function Get-OrcaDesktopPressMessage([int]$Count, [uint32]$Down, [uint32]$Double) {
+    if ($Count -eq 2) { $Double } else { $Down }
 }
 
 function Send-OrcaDesktopScroll($Target, $Payload) {

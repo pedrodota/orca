@@ -3029,18 +3029,18 @@ private enum DesktopAppBridge {
         return nil
     }
 
+    // Why one press: the pane sends one click per real press, with clickCount as that press's
+    // position in a double or triple click, so replaying 1...count would multiply the presses.
     private static func postMouseClick(pid: pid_t, at point: CGPoint, button: MouseButtonSelection, count: Int, windowId: CGWindowID) throws {
-        for clickIndex in 1...count {
-            for type in [button.downEvent, button.upEvent] {
-                guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button.cgButton) else {
-                    throw ProviderError.coded("accessibility_error", "failed to create mouse event")
-                }
-                event.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
-                event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowId))
-                event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowId))
-                event.postToPid(pid)
-                usleep(15_000)
+        for type in [button.downEvent, button.upEvent] {
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button.cgButton) else {
+                throw ProviderError.coded("accessibility_error", "failed to create mouse event")
             }
+            event.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+            event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowId))
+            event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowId))
+            event.postToPid(pid)
+            usleep(15_000)
         }
     }
 
