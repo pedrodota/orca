@@ -4,6 +4,7 @@ import {
   AGENT_CONTROL_IDLE_MS,
   INITIAL_AGENT_CONTROL_STATE,
   reduceAgentControl,
+  requestAgentStop,
   type DesktopAppAgentControlState
 } from './desktop-app-agent-control-state'
 
@@ -66,8 +67,8 @@ export function useDesktopAppAgentControl(
     if (pid === null) {
       return
     }
-    dispatch({ type: 'stop' })
-    void window.api?.desktopApp?.stopAgent({ pid, appName, bundleId })
+    const api = window.api?.desktopApp
+    void requestAgentStop(dispatch, api && (() => api.stopAgent({ pid, appName, bundleId })))
   }, [pid, appName, bundleId])
 
   const allowAgent = useCallback(() => {

@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DesktopAppAgentActivity } from '../../../../shared/desktop-app-types'
 import {
   AGENT_ACTION_MAX_MS,
   AGENT_CONTROL_IDLE_MS,
   INITIAL_AGENT_CONTROL_STATE,
-  reduceAgentControl
+  reduceAgentControl,
+  requestAgentStop,
+  type DesktopAppAgentControlEvent
 } from './desktop-app-agent-control-state'
 
 function activity(overrides: Partial<DesktopAppAgentActivity>): DesktopAppAgentActivity {
@@ -113,5 +115,26 @@ describe('agent control state', () => {
     expect(
       reduceAgentControl(state, { type: 'idle', now: 1_000 + AGENT_ACTION_MAX_MS })
     ).toMatchObject({ controlling: false, inFlight: {} })
+  })
+
+  it('takes Stop back when main could not block the agent', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const events: DesktopAppAgentControlEvent[] = []
+    await requestAgentStop(
+      (event) => events.push(event),
+      () => Promise.reject(new Error('ipc gone'))
+    )
+    expect(events.map((event) => event.type)).toEqual(['stop', 'stopFailed'])
+    const state = events.reduce(reduceAgentControl, INITIAL_AGENT_CONTROL_STATE)
+    expect(state.stopped).toBe(false)
+  })
+
+  it('keeps Stop once main blocked the agent', async () => {
+    const events: DesktopAppAgentControlEvent[] = []
+    await requestAgentStop(
+      (event) => events.push(event),
+      () => Promise.resolve()
+    )
+    expect(events.map((event) => event.type)).toEqual(['stop'])
   })
 })

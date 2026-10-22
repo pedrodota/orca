@@ -31,6 +31,8 @@ export type DesktopAppAgentControlEvent =
   | { type: 'activity'; activity: DesktopAppAgentActivity; targetsPane: boolean }
   | { type: 'idle'; now: number }
   | { type: 'stop' }
+  // Main never blocked the pid, so the agent can still act: the pane must not claim it stopped.
+  | { type: 'stopFailed' }
   | { type: 'allow' }
   | { type: 'reset' }
   | { type: 'hydrateStopped' }
@@ -56,11 +58,26 @@ export function reduceAgentControl(
     case 'stop':
       return { ...state, controlling: false, stopped: true, cursor: null, inFlight: {} }
     case 'allow':
+    case 'stopFailed':
       return { ...state, stopped: false }
     case 'hydrateStopped':
       return { ...state, stopped: true }
     case 'reset':
       return INITIAL_AGENT_CONTROL_STATE
+  }
+}
+
+/** Shows Stop at once and takes it back if main could not block the agent. */
+export async function requestAgentStop(
+  dispatch: (event: DesktopAppAgentControlEvent) => void,
+  stop: (() => Promise<unknown>) | undefined
+): Promise<void> {
+  dispatch({ type: 'stop' })
+  try {
+    await stop?.()
+  } catch (error) {
+    console.warn('[desktop-app] stopAgent failed:', error)
+    dispatch({ type: 'stopFailed' })
   }
 }
 
