@@ -39,19 +39,16 @@ function runTrackedComputerAction(
   return runComputerActionWithActivity(
     `computer.${method}`,
     params,
-    () => callComputerSidecarAction(method, params),
+    (runParams) => callComputerSidecarAction(method, runParams),
     async () => (await callComputerSidecarListApps()).apps,
     resolveAppPidWithProvider
   )
 }
 
+// Why no catch: this only runs while a stop is active, and an unresolvable selector must fail
+// closed instead of skipping the block check.
 async function resolveAppPidWithProvider(selector: string): Promise<number | null> {
-  try {
-    return (await callComputerSidecarListWindows({ app: selector })).app.pid
-  } catch {
-    // Not found (or not resolvable): the action itself will fail the same way.
-    return null
-  }
+  return (await callComputerSidecarListWindows({ app: selector })).app.pid ?? null
 }
 
 export function resetComputerSessionsForTest(): void {

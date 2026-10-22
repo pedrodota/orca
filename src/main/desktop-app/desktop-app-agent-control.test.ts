@@ -277,4 +277,79 @@ describe('runComputerActionWithActivity', () => {
     ).resolves.toBeDefined()
     expect(isDesktopAppAgentBlocked(firefox.pid)).toBe(false)
   })
+
+  it('keeps a block when the process identity cannot be read again', async () => {
+    const identity = vi.mocked(processStartIdentity)
+    identity.mockReturnValue('1000')
+    blockDesktopAppAgent(PEPPER)
+    identity.mockReturnValue(null)
+    const run = vi.fn(async () => actionResult())
+
+    await expect(
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'pid:4242' },
+        run,
+        RUNNING_APPS,
+        NO_PROVIDER_PID
+      )
+    ).rejects.toMatchObject({ code: COMPUTER_ERROR_CODES.desktop_app_stopped_by_user })
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('runs the action against the pid that passed the block check', async () => {
+    blockDesktopAppAgent(PEPPER)
+    const run = vi.fn(async (_params: unknown) => actionResult())
+
+    await runComputerActionWithActivity(
+      'computer.click',
+      { app: 'Safari', x: 1, y: 2 },
+      run,
+      RUNNING_APPS,
+      async () => 7
+    )
+    expect(run).toHaveBeenCalledWith({ app: 'pid:7', x: 1, y: 2 })
+  })
+
+  it('fails closed when a stop is active and the selector cannot be resolved', async () => {
+    blockDesktopAppAgent(PEPPER)
+    const run = vi.fn(async () => actionResult())
+    const providerError = new Error('provider down')
+
+    await expect(
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'Untitled' },
+        run,
+        RUNNING_APPS,
+        async () => {
+          throw providerError
+        }
+      )
+    ).rejects.toBe(providerError)
+    await expect(
+      runComputerActionWithActivity(
+        'computer.click',
+        { app: 'Untitled' },
+        run,
+        RUNNING_APPS,
+        NO_PROVIDER_PID
+      )
+    ).rejects.toMatchObject({ code: COMPUTER_ERROR_CODES.app_not_found })
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('passes params through untouched when no stop is active', async () => {
+    const run = vi.fn(async (_params: unknown) => actionResult())
+    const params = { app: 'Safari' }
+
+    await runComputerActionWithActivity(
+      'computer.click',
+      params,
+      run,
+      RUNNING_APPS,
+      NO_PROVIDER_PID
+    )
+    expect(run).toHaveBeenCalledWith(params)
+  })
 })

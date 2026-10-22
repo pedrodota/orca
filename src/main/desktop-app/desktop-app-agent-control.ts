@@ -89,7 +89,9 @@ function pruneReusedPids(apps: ComputerAppInfo[]): void {
   for (const [pid, block] of blockedApps) {
     const identity = blockIdentities.get(pid)
     if (identity !== undefined) {
-      if (processStartIdentity(pid) !== identity) {
+      // Why: a failed read keeps the block; only a different start time proves the pid was reused.
+      const current = processStartIdentity(pid)
+      if (current !== null && current !== identity) {
         allowDesktopAppAgent(pid)
       }
       continue
@@ -120,39 +122,52 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+type BlockCheck = { blocked: DesktopAppAgentBlock | null; pinnedPid: number | null }
+
 async function findBlockedTarget(
   selector: string | null,
   listApps: ListRunningApps,
   resolveAppPid: ResolveAppPid
-): Promise<DesktopAppAgentBlock | null> {
+): Promise<BlockCheck> {
   pruneExitedApps()
   if (!selector || blockedApps.size === 0) {
-    return null
+    return { blocked: null, pinnedPid: null }
   }
   const apps = await listApps()
   pruneReusedPids(apps)
   const direct = findBlockedDesktopApp(selector)
   if (direct) {
-    return direct
+    return { blocked: direct, pinnedPid: null }
   }
   // Why: the block must hold for every spelling a provider accepts for that app ("PID:5", "5",
   // "notepad.exe", a window title substring on Windows and Linux), so the final word is the pid
   // the provider itself resolves the selector to, not how this module reads the text.
+  // A provider error propagates: with a stop active, an unresolvable target fails closed.
   const pids = [resolveSelectorPid(selector, apps), await resolveAppPid(selector)]
   const pid = pids.find((candidate) => candidate !== null && blockedApps.has(candidate))
-  return pid === undefined || pid === null ? null : (blockedApps.get(pid) ?? null)
+  if (pid !== undefined && pid !== null) {
+    return { blocked: blockedApps.get(pid) ?? null, pinnedPid: null }
+  }
+  const resolved = pids[1] ?? pids[0]
+  if (resolved === null) {
+    throw new RuntimeClientError(
+      COMPUTER_ERROR_CODES.app_not_found,
+      `No running app matches "${selector}".`
+    )
+  }
+  return { blocked: null, pinnedPid: resolved }
 }
 
 export async function runComputerActionWithActivity(
   method: string,
   params: unknown,
-  run: () => Promise<ComputerActionResult>,
+  run: (params: unknown) => Promise<ComputerActionResult>,
   listApps: ListRunningApps,
   resolveAppPid: ResolveAppPid
 ): Promise<ComputerActionResult> {
   const record = isRecord(params) ? params : {}
   const appSelector = typeof record.app === 'string' ? record.app : null
-  const blocked = await findBlockedTarget(appSelector, listApps, resolveAppPid)
+  const { blocked, pinnedPid } = await findBlockedTarget(appSelector, listApps, resolveAppPid)
   if (blocked) {
     throw new RuntimeClientError(
       COMPUTER_ERROR_CODES.desktop_app_stopped_by_user,
@@ -172,8 +187,11 @@ export async function runComputerActionWithActivity(
     ok: null,
     at: Date.now()
   })
+  // Why: while a stop is active the action runs against the exact pid that passed the check,
+  // so a selector cannot resolve to a different (blocked) process between the check and the action.
+  const runParams = pinnedPid === null ? params : { ...record, app: `pid:${pinnedPid}` }
   try {
-    const result = await run()
+    const result = await run(runParams)
     emit({
       ...base,
       phase: 'end',
