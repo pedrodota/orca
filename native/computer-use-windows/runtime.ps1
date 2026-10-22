@@ -195,6 +195,8 @@ public static class OrcaDesktopAppWin32 {
     [DllImport("user32.dll")] private static extern uint MapVirtualKeyW(uint code, uint mapType);
     [DllImport("user32.dll")] private static extern short VkKeyScanW(char character);
     [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindowDpiAwarenessContext(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool PhysicalToLogicalPointForPerMonitorDPI(IntPtr hwnd, ref POINT point);
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out RECT value, int size);
     [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static extern int DwmGetWindowAttributeInt(IntPtr hwnd, int attribute, out int value, int size);
 
@@ -272,9 +274,28 @@ public static class OrcaDesktopAppWin32 {
         return current;
     }
 
-    public static IntPtr ClientLParam(IntPtr hwnd, int screenX, int screenY) {
+    // Why: PostMessage does not rescale lParam, and a DPI-virtualized (unaware or system-aware)
+    // target reads it in its own logical pixels; physical points would land up to 2x off.
+    public static POINT TargetScreenPoint(IntPtr hwnd, int screenX, int screenY) {
         var point = new POINT { X = screenX, Y = screenY };
-        ScreenToClient(hwnd, ref point);
+        try { PhysicalToLogicalPointForPerMonitorDPI(hwnd, ref point); } catch (EntryPointNotFoundException) { }
+        return point;
+    }
+
+    public static IntPtr ClientLParam(IntPtr hwnd, int screenX, int screenY) {
+        var point = TargetScreenPoint(hwnd, screenX, screenY);
+        var previous = IntPtr.Zero;
+        try { previous = SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(hwnd)); } catch (EntryPointNotFoundException) { }
+        try {
+            ScreenToClient(hwnd, ref point);
+        } finally {
+            if (previous != IntPtr.Zero) { SetThreadDpiAwarenessContext(previous); }
+        }
+        return PackPoint(point.X, point.Y);
+    }
+
+    public static IntPtr ScreenLParam(IntPtr hwnd, int screenX, int screenY) {
+        var point = TargetScreenPoint(hwnd, screenX, screenY);
         return PackPoint(point.X, point.Y);
     }
 
@@ -1448,13 +1469,16 @@ function Send-OrcaDesktopClick($Target, $Payload) {
     $child = [OrcaDesktopAppWin32]::ChildAt($Target.handle, $point.x, $point.y)
     $lParam = [OrcaDesktopAppWin32]::ClientLParam($child, $point.x, $point.y)
     [OrcaDesktopAppWin32]::Post($child, $DesktopAppMessages.MouseMove, 0, $lParam)
-    for ($index = 1; $index -le $count; $index++) {
-        # Why: real double clicks arrive as down, up, DBLCLK, up; apps key double-click
-        # handling off the DBLCLK message, not off two downs.
-        $message = if ($index -eq 2) { $double } else { $down }
-        [OrcaDesktopAppWin32]::Post($child, $message, $buttonFlag, $lParam)
-        [OrcaDesktopAppWin32]::Post($child, $up, 0, $lParam)
-    }
+    # Why one press: the pane sends one click per real press, with clickCount as that press's
+    # position in the sequence. Real double clicks arrive as down, up, DBLCLK, up, so the
+    # second press is the DBLCLK message.
+    $message = Get-OrcaDesktopPressMessage $count $down $double
+    [OrcaDesktopAppWin32]::Post($child, $message, $buttonFlag, $lParam)
+    [OrcaDesktopAppWin32]::Post($child, $up, 0, $lParam)
+}
+
+function Get-OrcaDesktopPressMessage([int]$Count, [uint32]$Down, [uint32]$Double) {
+    if ($Count -eq 2) { $Double } else { $Down }
 }
 
 function Send-OrcaDesktopScroll($Target, $Payload) {
@@ -1463,7 +1487,7 @@ function Send-OrcaDesktopScroll($Target, $Payload) {
     $deltaY = Get-OrcaRequiredNumber $Payload.deltaY "deltaY"
     $child = [OrcaDesktopAppWin32]::ChildAt($Target.handle, $point.x, $point.y)
     # Why: wheel messages carry screen coordinates, unlike button messages.
-    $lParam = [OrcaDesktopAppWin32]::PackPoint($point.x, $point.y)
+    $lParam = [OrcaDesktopAppWin32]::ScreenLParam($child, $point.x, $point.y)
     # Pixel deltas from the pane become wheel units (120 per notch, about 100 px); the sign is
     # flipped for vertical because WM_MOUSEWHEEL treats positive as "away from the user".
     $vertical = [int][Math]::Max(-$DesktopAppMaxWheelDelta, [Math]::Min($DesktopAppMaxWheelDelta, [Math]::Round(-$deltaY * 1.2)))

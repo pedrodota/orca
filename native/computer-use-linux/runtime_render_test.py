@@ -37,6 +37,9 @@ def load_runtime():
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    # Why: the Desktop App tools must run without gi, so importing the module may not touch it.
+    assert module.Atspi is None
+    module.load_accessibility_bindings()
     return module
 
 
@@ -315,6 +318,42 @@ class DesktopAppRuntimeTest(unittest.TestCase):
             # XEvent is a union padded to 24 longs; a smaller struct would let XSendEvent read past it.
             self.assertEqual(ctypes.sizeof(runtime.XEvent), 192)
             self.assertEqual(ctypes.sizeof(runtime.XWindowAttributes), 136)
+
+
+class FakePointerSession:
+    display = None
+    root = 1
+
+    def __init__(self, masks):
+        self.masks = masks
+        self.sent = []
+
+    def child_at(self, window, root_x, root_y):
+        return 7, root_x - 100, root_y - 50, [window, 7]
+
+    def event_masks(self, window):
+        return self.masks.get(window, 0)
+
+    def send(self, window, event, mask):
+        self.sent.append(event.input.type)
+
+
+class DesktopAppPointerTest(unittest.TestCase):
+    record = {"windowId": 5, "bounds": {"x": 100, "y": 50, "width": 400, "height": 300}}
+
+    def test_double_click_sends_one_press_per_mouseup(self):
+        session = FakePointerSession({5: runtime.X_BUTTON_PRESS_MASK})
+        for count in (1, 2):
+            runtime.desktop_app_click(session, self.record, {"x": 10, "y": 10, "button": "left", "clickCount": count})
+        self.assertEqual(session.sent.count(runtime.X_BUTTON_PRESS), 2)
+
+    def test_clicks_fail_loudly_when_no_window_selects_core_buttons(self):
+        session = FakePointerSession({})
+        with self.assertRaisesRegex(RuntimeError, "unsupported capability"):
+            runtime.desktop_app_click(session, self.record, {"x": 10, "y": 10, "button": "left", "clickCount": 1})
+        with self.assertRaisesRegex(RuntimeError, "unsupported capability"):
+            runtime.desktop_app_scroll(session, self.record, {"x": 10, "y": 10, "deltaX": 0, "deltaY": 120})
+        self.assertEqual(session.sent, [])
 
 
 if __name__ == "__main__":

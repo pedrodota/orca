@@ -234,6 +234,8 @@ try {
     $chord = $null
     try { Send-OrcaDesktopKey $target "shift+cmd+z" } catch { $chord = $_.Exception.Message }
     Assert-TestEqual ($chord -like "unsupported capability:*") $true "desktop unsupported chord degrades"
+    $presses = @(1, 2, 3 | ForEach-Object { Get-OrcaDesktopPressMessage $_ 0x0201 0x0203 })
+    Assert-TestEqual ($presses -join ",") "513,515,513" "desktop click sends one press, DBLCLK on the second"
     $windowsCount = @(Get-OrcaDesktopWindows $PID).Count
     Assert-TestEqual ($windowsCount -ge 0) $true "desktop window list runs"
 

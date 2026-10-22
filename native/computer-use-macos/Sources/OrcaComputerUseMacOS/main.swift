@@ -2945,13 +2945,34 @@ private enum DesktopAppBridge {
             return ["path": "synthetic"]
         case "text":
             let text = try requiredString(input, "text")
+            try focusWindowInsideApp(pid: pid, windowId: windowId)
             try Input.typeText(text, pid: pid, background: true)
             return ["path": "synthetic"]
         case "key":
-            try Input.pressKey(try requiredString(input, "key"), pid: pid, background: true)
+            let key = try requiredString(input, "key")
+            try focusWindowInsideApp(pid: pid, windowId: windowId)
+            try Input.pressKey(key, pid: pid, background: true)
             return ["path": "synthetic"]
         default:
             throw ProviderError.coded("invalid_argument", "unsupported input kind '\(kind)'")
+        }
+    }
+
+    // Why: keys posted to a pid go to the app's key window, which can be another window of the
+    // same app than the one in the pane. Making the chosen window main inside the app does not
+    // activate the app; if the app refuses, nothing is typed into a window the user cannot see.
+    private static func focusWindowInsideApp(pid: pid_t, windowId: CGWindowID) throws {
+        let appElement = AXUIElementCreateApplication(pid)
+        let isFocused = { () -> Bool in
+            copyElement(appElement, kAXFocusedWindowAttribute as String).flatMap(windowNumber) == windowId
+        }
+        if isFocused() { return }
+        if let window = (copyArray(appElement, kAXWindowsAttribute as String) ?? []).first(where: { windowNumber($0) == windowId }) {
+            _ = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+            _ = AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        }
+        guard isFocused() else {
+            throw ProviderError.coded("window_not_focused", "the app kept keyboard focus on another of its windows; bring that window forward in its app, then retry")
         }
     }
 
@@ -3029,18 +3050,18 @@ private enum DesktopAppBridge {
         return nil
     }
 
+    // Why one press: the pane sends one click per real press, with clickCount as that press's
+    // position in a double or triple click, so replaying 1...count would multiply the presses.
     private static func postMouseClick(pid: pid_t, at point: CGPoint, button: MouseButtonSelection, count: Int, windowId: CGWindowID) throws {
-        for clickIndex in 1...count {
-            for type in [button.downEvent, button.upEvent] {
-                guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button.cgButton) else {
-                    throw ProviderError.coded("accessibility_error", "failed to create mouse event")
-                }
-                event.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
-                event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowId))
-                event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowId))
-                event.postToPid(pid)
-                usleep(15_000)
+        for type in [button.downEvent, button.upEvent] {
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button.cgButton) else {
+                throw ProviderError.coded("accessibility_error", "failed to create mouse event")
             }
+            event.setIntegerValueField(.mouseEventClickState, value: Int64(count))
+            event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowId))
+            event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowId))
+            event.postToPid(pid)
+            usleep(15_000)
         }
     }
 
