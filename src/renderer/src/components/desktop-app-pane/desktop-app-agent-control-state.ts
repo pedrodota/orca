@@ -70,28 +70,36 @@ export function reduceAgentControl(
 /** Shows Stop at once and takes it back if main could not block the agent. */
 export async function requestAgentStop(
   dispatch: (event: DesktopAppAgentControlEvent) => void,
-  stop: (() => Promise<unknown>) | undefined
+  stop: (() => Promise<unknown>) | undefined,
+  isCurrent: () => boolean = () => true
 ): Promise<void> {
   dispatch({ type: 'stop' })
   try {
     await stop?.()
   } catch (error) {
     console.warn('[desktop-app] stopAgent failed:', error)
-    dispatch({ type: 'stopFailed' })
+    // Why: the pane may show another app by now; its state must not change for this one.
+    if (isCurrent()) {
+      dispatch({ type: 'stopFailed' })
+    }
   }
 }
 
 /** Clears Stop at once and shows it again if main could not lift the block. */
 export async function requestAgentAllow(
   dispatch: (event: DesktopAppAgentControlEvent) => void,
-  allow: (() => Promise<unknown>) | undefined
+  allow: (() => Promise<unknown>) | undefined,
+  isCurrent: () => boolean = () => true
 ): Promise<void> {
   dispatch({ type: 'allow' })
   try {
     await allow?.()
   } catch (error) {
     console.warn('[desktop-app] allowAgent failed:', error)
-    dispatch({ type: 'hydrateStopped' })
+    // Why: the pane may show another app by now; its state must not change for this one.
+    if (isCurrent()) {
+      dispatch({ type: 'hydrateStopped' })
+    }
   }
 }
 

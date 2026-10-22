@@ -150,4 +150,21 @@ describe('agent control state', () => {
     const stopped = { ...INITIAL_AGENT_CONTROL_STATE, stopped: true }
     expect(events.reduce(reduceAgentControl, stopped).stopped).toBe(true)
   })
+
+  it('leaves a newer target alone when an older Stop or Allow fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const events: DesktopAppAgentControlEvent[] = []
+    const fail = () => Promise.reject(new Error('ipc gone'))
+    await requestAgentStop(
+      (event) => events.push(event),
+      fail,
+      () => false
+    )
+    await requestAgentAllow(
+      (event) => events.push(event),
+      fail,
+      () => false
+    )
+    expect(events.map((event) => event.type)).toEqual(['stop', 'allow'])
+  })
 })

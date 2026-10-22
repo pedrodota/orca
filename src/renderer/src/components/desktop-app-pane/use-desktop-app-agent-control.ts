@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { activityTargetsPane, type DesktopAppPaneTarget } from './desktop-app-agent-activity-match'
 import {
   AGENT_CONTROL_IDLE_MS,
@@ -23,8 +23,11 @@ export function useDesktopAppAgentControl(
   const pid = target?.pid ?? null
   const appName = target?.appName ?? ''
   const bundleId = target?.bundleId ?? null
+  // Bumped on every target change so a late Stop/Allow failure only rolls back its own target.
+  const targetVersion = useRef(0)
 
   useEffect(() => {
+    targetVersion.current += 1
     dispatch({ type: 'reset' })
     const api = window.api?.desktopApp
     if (!api || windowId === null || pid === null) {
@@ -72,7 +75,12 @@ export function useDesktopAppAgentControl(
       return
     }
     const api = window.api?.desktopApp
-    void requestAgentStop(dispatch, api && (() => api.stopAgent({ pid, appName, bundleId })))
+    const version = targetVersion.current
+    void requestAgentStop(
+      dispatch,
+      api && (() => api.stopAgent({ pid, appName, bundleId })),
+      () => targetVersion.current === version
+    )
   }, [pid, appName, bundleId])
 
   const allowAgent = useCallback(() => {
@@ -80,7 +88,12 @@ export function useDesktopAppAgentControl(
       return
     }
     const api = window.api?.desktopApp
-    void requestAgentAllow(dispatch, api && (() => api.allowAgent({ pid })))
+    const version = targetVersion.current
+    void requestAgentAllow(
+      dispatch,
+      api && (() => api.allowAgent({ pid })),
+      () => targetVersion.current === version
+    )
   }, [pid])
 
   return { ...state, stopAgent, allowAgent }
