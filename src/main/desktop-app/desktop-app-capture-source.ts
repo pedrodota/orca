@@ -89,11 +89,22 @@ function trackRenderer(sender: Electron.WebContents): void {
   }
   trackedRenderers.add(sender.id)
   const id = sender.id
+  const forget = (): void => {
+    authorizedWindows.delete(id)
+    disarm(id)
+  }
+  // Why: a reloaded or crashed renderer keeps its webContents id but loses its panes, so their
+  // releases never come; its authorizations must not outlive the page that took them.
+  sender.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) {
+      forget()
+    }
+  })
+  sender.on('render-process-gone', forget)
   // Why: registered once per renderer, so repeated prepares do not stack listeners.
   sender.once('destroyed', () => {
     trackedRenderers.delete(id)
-    authorizedWindows.delete(id)
-    disarm(id)
+    forget()
   })
 }
 
