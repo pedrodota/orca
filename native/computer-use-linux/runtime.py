@@ -1039,7 +1039,8 @@ DESKTOP_APP_PIXELS_PER_SCROLL_STEP = 50
 X_KEY_PRESS, X_KEY_RELEASE, X_BUTTON_PRESS, X_BUTTON_RELEASE, X_MOTION_NOTIFY = 2, 3, 4, 5, 6
 X_SHIFT_MASK, X_CONTROL_MASK, X_MOD1_MASK = 1, 4, 8
 X_KEY_EVENT_MASKS = 1 | 2
-X_BUTTON_EVENT_MASKS = (1 << 2) | (1 << 3)
+X_BUTTON_PRESS_MASK = 1 << 2
+X_BUTTON_EVENT_MASKS = X_BUTTON_PRESS_MASK | (1 << 3)
 X_IS_VIEWABLE = 2
 DESKTOP_APP_KEYSYM_NAMES = {
     "return": "Return", "enter": "Return", "tab": "Tab", "backspace": "BackSpace",
@@ -1243,19 +1244,26 @@ class XlibSession:
         }
 
     def child_at(self, window, root_x, root_y):
-        """Deepest descendant of `window` under the root point, plus window-local coordinates."""
+        """Deepest descendant of `window` under the root point, its window-local coordinates,
+        and the chain from `window` down to it."""
         c = self.ctypes
-        target = window
+        chain = [window]
         for _ in range(32):
             local_x, local_y, child = c.c_int(), c.c_int(), c.c_ulong()
             self.x.XTranslateCoordinates(
-                self.display, self.root, target, root_x, root_y,
+                self.display, self.root, chain[-1], root_x, root_y,
                 c.byref(local_x), c.byref(local_y), c.byref(child),
             )
             if not child.value:
-                return target, local_x.value, local_y.value
-            target = child.value
-        return target, local_x.value, local_y.value
+                break
+            chain.append(child.value)
+        return chain[-1], local_x.value, local_y.value, chain
+
+    def event_masks(self, window):
+        attributes = XWindowAttributes()
+        if not self.x.XGetWindowAttributes(self.display, window, self.ctypes.byref(attributes)):
+            return 0
+        return attributes.all_event_masks
 
     def send(self, window, event, mask):
         if not self.x.XSendEvent(self.display, window, 1, mask, self.ctypes.byref(event)):
@@ -1375,34 +1383,45 @@ def desktop_app_input_event(session, kind, target, local, root_point, state, det
     return event
 
 
+def desktop_app_pointer_target(session, record, x, y):
+    """Window under the point that core button events can reach, plus local and root points."""
+    root_point = (record["bounds"]["x"] + x, record["bounds"]["y"] + y)
+    target, local_x, local_y, chain = session.child_at(record["windowId"], *root_point)
+    # Why: GTK3/4, Qt and Chromium read the pointer through XInput2 and select no core button
+    # events, so XSendEvent would succeed and the click would vanish without any error.
+    if not any(session.event_masks(window) & X_BUTTON_PRESS_MASK for window in chain):
+        raise RuntimeError(
+            "unsupported capability: this app ignores background clicks and scrolling on X11; "
+            "use it in its own window"
+        )
+    return target, (local_x, local_y), root_point
+
+
 def desktop_app_click(session, record, payload):
     x, y = desktop_app_point_in_bounds(record["bounds"]["width"], record["bounds"]["height"], payload.get("x"), payload.get("y"))
-    count = require_positive_integer(payload.get("clickCount"), "clickCount")
+    require_positive_integer(payload.get("clickCount"), "clickCount")
     button = {"left": 1, "right": 3}.get(payload.get("button"))
     if button is None:
         raise ValueError(f"unsupported mouse button: {payload.get('button')}")
-    root_point = (record["bounds"]["x"] + x, record["bounds"]["y"] + y)
-    target, local_x, local_y = session.child_at(record["windowId"], *root_point)
-    for _ in range(min(count, 3)):
-        # Why: toolkits count double clicks from consecutive presses, so repeating the pair
-        # is what a real double or triple click looks like on the wire.
-        press = desktop_app_input_event(session, X_BUTTON_PRESS, target, (local_x, local_y), root_point, 0, button)
-        session.send(target, press, X_BUTTON_EVENT_MASKS)
-        release_state = 1 << (7 + button)
-        release = desktop_app_input_event(session, X_BUTTON_RELEASE, target, (local_x, local_y), root_point, release_state, button)
-        session.send(target, release, X_BUTTON_EVENT_MASKS)
+    target, local_point, root_point = desktop_app_pointer_target(session, record, x, y)
+    # Why one press: the pane sends one click per real press, with clickCount as that press's
+    # position in a double or triple click; toolkits count multi-clicks from consecutive presses.
+    press = desktop_app_input_event(session, X_BUTTON_PRESS, target, local_point, root_point, 0, button)
+    session.send(target, press, X_BUTTON_EVENT_MASKS)
+    release_state = 1 << (7 + button)
+    release = desktop_app_input_event(session, X_BUTTON_RELEASE, target, local_point, root_point, release_state, button)
+    session.send(target, release, X_BUTTON_EVENT_MASKS)
 
 
 def desktop_app_scroll(session, record, payload):
     x, y = desktop_app_point_in_bounds(record["bounds"]["width"], record["bounds"]["height"], payload.get("x"), payload.get("y"))
     delta_x = require_finite_number(payload.get("deltaX"), "deltaX")
     delta_y = require_finite_number(payload.get("deltaY"), "deltaY")
-    root_point = (record["bounds"]["x"] + x, record["bounds"]["y"] + y)
-    target, local_x, local_y = session.child_at(record["windowId"], *root_point)
+    target, local_point, root_point = desktop_app_pointer_target(session, record, x, y)
     for button, steps in desktop_app_scroll_buttons(delta_x, delta_y):
         for _ in range(steps):
             for kind in (X_BUTTON_PRESS, X_BUTTON_RELEASE):
-                event = desktop_app_input_event(session, kind, target, (local_x, local_y), root_point, 0, button)
+                event = desktop_app_input_event(session, kind, target, local_point, root_point, 0, button)
                 session.send(target, event, X_BUTTON_EVENT_MASKS)
 
 
