@@ -1209,6 +1209,7 @@ class XlibSession:
         x.XkbKeycodeToKeysym.restype = c.c_ulong
         x.XkbKeycodeToKeysym.argtypes = [c.c_void_p, c.c_ubyte, c.c_int, c.c_int]
         x.XkbGetState.argtypes = [c.c_void_p, c.c_uint, c.c_void_p]
+        x.XDisplayKeycodes.argtypes = [c.c_void_p, c.POINTER(c.c_int), c.POINTER(c.c_int)]
         x.XFree.argtypes = [c.c_void_p]
         x.XSync.argtypes = [c.c_void_p, c.c_int]
         x.XCloseDisplay.argtypes = [c.c_void_p]
@@ -1221,6 +1222,12 @@ class XlibSession:
 
     def atom(self, name):
         return self.x.XInternAtom(self.display, name.encode("ascii"), 0)
+
+    def keycode_range(self):
+        """The server's legal keycodes, lowest and highest."""
+        lowest, highest = self.ctypes.c_int(), self.ctypes.c_int()
+        self.x.XDisplayKeycodes(self.display, self.ctypes.byref(lowest), self.ctypes.byref(highest))
+        return lowest.value, highest.value
 
     def keyboard_group(self):
         """The XKB group (layout) the user has active now; 0 when XKB cannot report it."""
@@ -1457,14 +1464,17 @@ def desktop_app_scroll(session, record, payload):
 
 def desktop_app_keycode(session, keysym, group=0):
     """Returns (keycode, needs_shift) for a keysym in the given layout group, or None."""
-    keycode = session.x.XKeysymToKeycode(session.display, keysym)
-    if not keycode:
-        return None
-    # Why: only levels 0 and 1 are reachable with Shift alone; an AltGr level (German "@" on Q)
-    # would type the shifted symbol instead, so it reports that the layout cannot type it.
-    for level, needs_shift in ((0, False), (1, True)):
-        if session.x.XkbKeycodeToKeysym(session.display, keycode, group, level) == keysym:
-            return keycode, needs_shift
+    # Why scan: XKeysymToKeycode ignores the group, so its keycode may lack the keysym in the
+    # active layout while another keycode has it. It is tried first since it usually matches.
+    first = session.x.XKeysymToKeycode(session.display, keysym)
+    lowest, highest = session.keycode_range()
+    keycodes = ([first] if first else []) + [code for code in range(lowest, highest + 1) if code != first]
+    for keycode in keycodes:
+        # Why: only levels 0 and 1 are reachable with Shift alone; an AltGr level (German "@" on Q)
+        # would type the shifted symbol instead, so it reports that the layout cannot type it.
+        for level, needs_shift in ((0, False), (1, True)):
+            if session.x.XkbKeycodeToKeysym(session.display, keycode, group, level) == keysym:
+                return keycode, needs_shift
     return None
 
 

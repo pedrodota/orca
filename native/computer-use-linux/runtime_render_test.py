@@ -357,15 +357,16 @@ class DesktopAppPointerTest(unittest.TestCase):
 
 
 class DesktopAppKeycodeTest(unittest.TestCase):
-    def session(self, levels, groups=None):
-        groups = groups or {0: levels}
+    def session(self, levels, groups=None, keycodes=None):
+        # keycodes: keycode -> {group: [level 0, level 1, ...]}
+        keycodes = keycodes or {24: groups or {0: levels}}
 
-        def keysym_at(_display, _keycode, group, level):
-            row = groups.get(group, [])
+        def keysym_at(_display, keycode, group, level):
+            row = keycodes.get(keycode, {}).get(group, [])
             return row[level] if level < len(row) else 0
 
         x = types.SimpleNamespace(XKeysymToKeycode=lambda _display, _keysym: 24, XkbKeycodeToKeysym=keysym_at)
-        return types.SimpleNamespace(x=x, display=None)
+        return types.SimpleNamespace(x=x, display=None, keycode_range=lambda: (8, 255))
 
     def test_uses_shift_only_for_the_shifted_level(self):
         self.assertEqual(runtime.desktop_app_keycode(self.session([0x71, 0x51]), 0x71), (24, False))
@@ -379,6 +380,12 @@ class DesktopAppKeycodeTest(unittest.TestCase):
         self.assertIsNone(runtime.desktop_app_keycode(session, 0x6CA))
         self.assertEqual(runtime.desktop_app_keycode(session, 0x6CA, 1), (24, False))
         self.assertEqual(runtime.desktop_app_keycode(session, 0x6EA, 1), (24, True))
+
+    def test_finds_another_keycode_that_has_the_keysym_in_the_group(self):
+        session = self.session([], keycodes={24: {0: [0x71], 1: [0x6CA]}, 38: {1: [0x71, 0x51]}})
+        self.assertEqual(runtime.desktop_app_keycode(session, 0x71, 0), (24, False))
+        self.assertEqual(runtime.desktop_app_keycode(session, 0x51, 1), (38, True))
+        self.assertIsNone(runtime.desktop_app_keycode(session, 0x40, 1))
 
 
 if __name__ == "__main__":
