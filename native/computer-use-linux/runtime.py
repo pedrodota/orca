@@ -18,17 +18,32 @@ import time
 import uuid
 from dataclasses import dataclass
 
-import gi
+# Why lazy: the Desktop App tools only need libX11, so a distro without python3-gi or the
+# AT-SPI typelib must still list and drive windows. load_accessibility_bindings fills these.
+Atspi = None
+Gdk = None
+GdkPixbuf = None
 
-gi.require_version("Atspi", "2.0")
-try:
-    gi.require_version("Gdk", "3.0")
-    gi.require_version("GdkPixbuf", "2.0")
-    from gi.repository import Gdk, GdkPixbuf
-except (ImportError, ValueError):
-    Gdk = None
-    GdkPixbuf = None
-from gi.repository import Atspi
+
+def load_accessibility_bindings():
+    global Atspi, Gdk, GdkPixbuf
+    if Atspi is not None:
+        return
+    import gi
+
+    gi.require_version("Atspi", "2.0")
+    try:
+        gi.require_version("Gdk", "3.0")
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import Gdk as gdk, GdkPixbuf as gdk_pixbuf
+
+        Gdk, GdkPixbuf = gdk, gdk_pixbuf
+    except (ImportError, ValueError):
+        Gdk = None
+        GdkPixbuf = None
+    from gi.repository import Atspi as atspi
+
+    Atspi = atspi
 
 MAX_NODES = 1200
 MAX_DEPTH = 64
@@ -1632,6 +1647,7 @@ def main():
         # Why: Desktop App tools talk to the X server, not AT-SPI, so they must not require the
         # session bus that only the accessibility tools use.
         if operation.get("tool") not in DESKTOP_APP_TOOLS:
+            load_accessibility_bindings()
             ensure_desktop_bus()
         print(json.dumps(run_operation(operation), separators=(",", ":")))
     except Exception as exc:

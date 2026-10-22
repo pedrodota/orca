@@ -37,6 +37,9 @@ def load_runtime():
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    # Why: the Desktop App tools must run without gi, so importing the module may not touch it.
+    assert module.Atspi is None
+    module.load_accessibility_bindings()
     return module
 
 
