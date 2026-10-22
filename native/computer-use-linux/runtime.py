@@ -1058,6 +1058,7 @@ DESKTOP_APP_MAX_SCROLL_STEPS = 50
 DESKTOP_APP_PIXELS_PER_SCROLL_STEP = 50
 X_KEY_PRESS, X_KEY_RELEASE, X_BUTTON_PRESS, X_BUTTON_RELEASE, X_MOTION_NOTIFY = 2, 3, 4, 5, 6
 X_SHIFT_MASK, X_CONTROL_MASK, X_MOD1_MASK = 1, 4, 8
+X_XKB_USE_CORE_KBD = 0x0100
 X_KEY_EVENT_MASKS = 1 | 2
 X_BUTTON_PRESS_MASK = 1 << 2
 X_BUTTON_EVENT_MASKS = X_BUTTON_PRESS_MASK | (1 << 3)
@@ -1207,6 +1208,7 @@ class XlibSession:
         x.XKeysymToKeycode.argtypes = [c.c_void_p, c.c_ulong]
         x.XkbKeycodeToKeysym.restype = c.c_ulong
         x.XkbKeycodeToKeysym.argtypes = [c.c_void_p, c.c_ubyte, c.c_int, c.c_int]
+        x.XkbGetState.argtypes = [c.c_void_p, c.c_uint, c.c_void_p]
         x.XFree.argtypes = [c.c_void_p]
         x.XSync.argtypes = [c.c_void_p, c.c_int]
         x.XCloseDisplay.argtypes = [c.c_void_p]
@@ -1219,6 +1221,14 @@ class XlibSession:
 
     def atom(self, name):
         return self.x.XInternAtom(self.display, name.encode("ascii"), 0)
+
+    def keyboard_group(self):
+        """The XKB group (layout) the user has active now; 0 when XKB cannot report it."""
+        # XkbStateRec: its first byte is the effective group; 32 bytes covers the whole struct.
+        state = (self.ctypes.c_ubyte * 32)()
+        if self.x.XkbGetState(self.display, X_XKB_USE_CORE_KBD, state) != 0:
+            return 0
+        return state[0] & 3
 
     def property(self, window, name):
         """Returns (format, raw bytes, item count) or None."""
@@ -1445,26 +1455,30 @@ def desktop_app_scroll(session, record, payload):
                 session.send(target, event, X_BUTTON_EVENT_MASKS)
 
 
-def desktop_app_keycode(session, keysym):
-    """Returns (keycode, needs_shift) for a keysym on the active layout, or None."""
+def desktop_app_keycode(session, keysym, group=0):
+    """Returns (keycode, needs_shift) for a keysym in the given layout group, or None."""
     keycode = session.x.XKeysymToKeycode(session.display, keysym)
     if not keycode:
         return None
     # Why: only levels 0 and 1 are reachable with Shift alone; an AltGr level (German "@" on Q)
     # would type the shifted symbol instead, so it reports that the layout cannot type it.
     for level, needs_shift in ((0, False), (1, True)):
-        if session.x.XkbKeycodeToKeysym(session.display, keycode, 0, level) == keysym:
+        if session.x.XkbKeycodeToKeysym(session.display, keycode, group, level) == keysym:
             return keycode, needs_shift
     return None
 
 
-def desktop_app_send_key(session, record, keysym, state):
-    resolved = desktop_app_keycode(session, keysym)
+def desktop_app_send_key(session, record, keysym, state, group=None):
+    group = session.keyboard_group() if group is None else group
+    resolved = desktop_app_keycode(session, keysym, group)
     if resolved is None:
         raise RuntimeError("unsupported capability: the current keyboard layout cannot type that key")
     keycode, needs_shift = resolved
     if needs_shift:
         state |= X_SHIFT_MASK
+    # Why: the receiving toolkit maps the keycode with the group carried in the event state
+    # (XkbBuildCoreState), not with the server's current group.
+    state |= group << 13
     # Why the top-level window: toolkits route key events from their top-level window to the
     # widget that holds keyboard focus inside it.
     window = record["windowId"]
@@ -1482,10 +1496,11 @@ def desktop_app_text(session, record, text):
         keysym = session.x.XStringToKeysym(b"Return") if character == "\n" else desktop_app_keysym_for_char(character)
         keysyms.append(keysym)
     # Why check first: stopping halfway would leave a partly typed string in the target app.
-    if any(desktop_app_keycode(session, keysym) is None for keysym in keysyms):
+    group = session.keyboard_group()
+    if any(desktop_app_keycode(session, keysym, group) is None for keysym in keysyms):
         raise RuntimeError("unsupported capability: the text has characters the current keyboard layout cannot type")
     for keysym in keysyms:
-        desktop_app_send_key(session, record, keysym, 0)
+        desktop_app_send_key(session, record, keysym, 0, group)
 
 
 def desktop_app_key(session, record, raw):

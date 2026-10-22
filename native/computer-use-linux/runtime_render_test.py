@@ -357,11 +357,14 @@ class DesktopAppPointerTest(unittest.TestCase):
 
 
 class DesktopAppKeycodeTest(unittest.TestCase):
-    def session(self, levels):
-        x = types.SimpleNamespace(
-            XKeysymToKeycode=lambda _display, _keysym: 24,
-            XkbKeycodeToKeysym=lambda _display, _keycode, _group, level: levels[level] if level < len(levels) else 0,
-        )
+    def session(self, levels, groups=None):
+        groups = groups or {0: levels}
+
+        def keysym_at(_display, _keycode, group, level):
+            row = groups.get(group, [])
+            return row[level] if level < len(row) else 0
+
+        x = types.SimpleNamespace(XKeysymToKeycode=lambda _display, _keysym: 24, XkbKeycodeToKeysym=keysym_at)
         return types.SimpleNamespace(x=x, display=None)
 
     def test_uses_shift_only_for_the_shifted_level(self):
@@ -370,6 +373,12 @@ class DesktopAppKeycodeTest(unittest.TestCase):
 
     def test_rejects_a_keysym_that_needs_altgr(self):
         self.assertIsNone(runtime.desktop_app_keycode(self.session([0x71, 0x51, 0x40]), 0x40))
+
+    def test_looks_up_the_active_layout_group(self):
+        session = self.session([], {0: [0x71, 0x51], 1: [0x6CA, 0x6EA]})
+        self.assertIsNone(runtime.desktop_app_keycode(session, 0x6CA))
+        self.assertEqual(runtime.desktop_app_keycode(session, 0x6CA, 1), (24, False))
+        self.assertEqual(runtime.desktop_app_keycode(session, 0x6EA, 1), (24, True))
 
 
 if __name__ == "__main__":
