@@ -1450,8 +1450,12 @@ def desktop_app_keycode(session, keysym):
     keycode = session.x.XKeysymToKeycode(session.display, keysym)
     if not keycode:
         return None
-    unshifted = session.x.XkbKeycodeToKeysym(session.display, keycode, 0, 0)
-    return keycode, unshifted != keysym
+    # Why: only levels 0 and 1 are reachable with Shift alone; an AltGr level (German "@" on Q)
+    # would type the shifted symbol instead, so it reports that the layout cannot type it.
+    for level, needs_shift in ((0, False), (1, True)):
+        if session.x.XkbKeycodeToKeysym(session.display, keycode, 0, level) == keysym:
+            return keycode, needs_shift
+    return None
 
 
 def desktop_app_send_key(session, record, keysym, state):

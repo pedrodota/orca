@@ -221,17 +221,23 @@ export function createLiveSurfaceTabRightOf(
     store.layoutByWorktree[worktreeId],
     sourceGroupId
   )
+  // Switch point: a paired server's frame-drawn workspace has no group of this desktop's own, so
+  // the tab opens in the group it would split beside.
+  const serverEnvironmentId = ORCA_LAYOUT_OWNER_IS_MAIN
+    ? frameDrawnServerOfSimulatorTab(store, worktreeId)
+    : null
+  const rightSplit = !reusableRightGroupId && !serverEnvironmentId
   const drawHere = (proposedId?: string): string | null => {
     // Why: publish the tab directly in its split group. A two-step
     // create-then-move can persist the midpoint during dev reload/HMR.
-    const splitTab = reusableRightGroupId
-      ? null
-      : store.createUnifiedTabInSplit(
+    const splitTab = rightSplit
+      ? store.createUnifiedTabInSplit(
           worktreeId,
           contentType,
           { sourceGroupId, splitDirection: 'right' },
           { ...(proposedId ? { id: proposedId } : {}), ...tabOptions }
         )
+      : null
     // A tab published straight into a new split is already active there.
     if (splitTab) {
       return splitTab.id
@@ -252,7 +258,7 @@ export function createLiveSurfaceTabRightOf(
       kind: contentType,
       label,
       groupId: reusableRightGroupId ?? sourceGroupId,
-      rightSplit: !reusableRightGroupId,
+      rightSplit,
       surface: (tabId) => surfaceCreatedTab(worktreeId, tabId, contentType),
       drawHere
     })
@@ -260,7 +266,11 @@ export function createLiveSurfaceTabRightOf(
       return sent
     }
   }
-  return drawHere()
+  const drawnId = drawHere()
+  if (drawnId && serverEnvironmentId) {
+    noteSimulatorTabCreatedHere(serverEnvironmentId, worktreeId, drawnId)
+  }
+  return drawnId
 }
 
 function hostOf(executionHostId: ExecutionHostId | undefined): {
