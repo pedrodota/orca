@@ -3,23 +3,27 @@ import { useAppStore } from '@/store'
 import type { Tab } from '../../../../shared/tab-types'
 import { readRememberedTarget } from './desktop-app-target-memory'
 
-/** Whether closing this tab leaves no other Desktop App tab showing the app with this pid. */
+/** Whether this tab stopped showing the app with this pid (closed, or switched to another
+ * window) and no other Desktop App tab shows it. */
 export function shouldReleaseAgentBlock(
-  closedTabId: string,
+  tabId: string,
   pid: number,
   openTabs: readonly Pick<Tab, 'id' | 'contentType'>[],
   rememberedPid: (tabId: string) => number | null
 ): boolean {
   const desktopTabs = openTabs.filter((tab) => tab.contentType === 'desktop-app')
-  if (desktopTabs.some((tab) => tab.id === closedTabId)) {
-    // Still open: the pane only remounted (split, move, workspace switch).
-    return false
+  if (desktopTabs.some((tab) => tab.id === tabId)) {
+    const current = rememberedPid(tabId)
+    if (current === null || current === pid) {
+      // Still showing that app: the pane only remounted (split, move, workspace switch).
+      return false
+    }
   }
   return !desktopTabs.some((tab) => rememberedPid(tab.id) === pid)
 }
 
-// Why: a stop is the user's call about this pane; once the tab is gone nothing can show
-// "Allow again", so the block would silently outlive every way to lift it.
+// Why: a stop is the user's call about this pane; once the tab is gone or shows another app,
+// nothing can show "Allow again", so the block would silently outlive every way to lift it.
 export function useReleaseAgentBlockOnClose(tabId: string, pid: number | null): void {
   useEffect(() => {
     if (pid === null) {
