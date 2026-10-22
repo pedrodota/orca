@@ -200,7 +200,13 @@ export class DesktopScriptProviderClient {
   }
 
   async desktopApp(method: NativeDesktopAppMethod, params: unknown): Promise<unknown> {
-    return await callDesktopScriptDesktopApp((request) => this.callBridge(request), method, params)
+    return await callDesktopScriptDesktopApp(
+      (request) => this.callBridge(request),
+      method,
+      params,
+      process.ppid,
+      this.platform
+    )
   }
 
   private async ensureActionSupported(method: NativeActionMethod): Promise<void> {
