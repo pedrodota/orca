@@ -4,6 +4,7 @@ import {
   AGENT_CONTROL_IDLE_MS,
   INITIAL_AGENT_CONTROL_STATE,
   reduceAgentControl,
+  requestAgentAllow,
   requestAgentStop,
   type DesktopAppAgentControlState
 } from './desktop-app-agent-control-state'
@@ -78,8 +79,8 @@ export function useDesktopAppAgentControl(
     if (pid === null) {
       return
     }
-    dispatch({ type: 'allow' })
-    void window.api?.desktopApp?.allowAgent({ pid })
+    const api = window.api?.desktopApp
+    void requestAgentAllow(dispatch, api && (() => api.allowAgent({ pid })))
   }, [pid])
 
   return { ...state, stopAgent, allowAgent }

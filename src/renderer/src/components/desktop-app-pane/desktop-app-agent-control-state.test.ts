@@ -5,6 +5,7 @@ import {
   AGENT_CONTROL_IDLE_MS,
   INITIAL_AGENT_CONTROL_STATE,
   reduceAgentControl,
+  requestAgentAllow,
   requestAgentStop,
   type DesktopAppAgentControlEvent
 } from './desktop-app-agent-control-state'
@@ -136,5 +137,17 @@ describe('agent control state', () => {
       () => Promise.resolve()
     )
     expect(events.map((event) => event.type)).toEqual(['stop'])
+  })
+
+  it('shows Stop again when main could not lift the block', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const events: DesktopAppAgentControlEvent[] = []
+    await requestAgentAllow(
+      (event) => events.push(event),
+      () => Promise.reject(new Error('ipc gone'))
+    )
+    expect(events.map((event) => event.type)).toEqual(['allow', 'hydrateStopped'])
+    const stopped = { ...INITIAL_AGENT_CONTROL_STATE, stopped: true }
+    expect(events.reduce(reduceAgentControl, stopped).stopped).toBe(true)
   })
 })

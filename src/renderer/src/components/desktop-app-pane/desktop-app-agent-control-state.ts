@@ -81,6 +81,20 @@ export async function requestAgentStop(
   }
 }
 
+/** Clears Stop at once and shows it again if main could not lift the block. */
+export async function requestAgentAllow(
+  dispatch: (event: DesktopAppAgentControlEvent) => void,
+  allow: (() => Promise<unknown>) | undefined
+): Promise<void> {
+  dispatch({ type: 'allow' })
+  try {
+    await allow?.()
+  } catch (error) {
+    console.warn('[desktop-app] allowAgent failed:', error)
+    dispatch({ type: 'hydrateStopped' })
+  }
+}
+
 function reduceActivity(
   state: DesktopAppAgentControlState,
   activity: DesktopAppAgentActivity,
