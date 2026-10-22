@@ -212,12 +212,18 @@ public static class OrcaDesktopAppWin32 {
 
     // Why: per-monitor-v2 awareness makes bounds and points physical pixels, the same space the
     // captured video frame uses; DPI-virtualized coordinates would offset clicks on scaled monitors.
-    public static void UsePhysicalPixels() {
-        try { SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch (EntryPointNotFoundException) { }
+    // Returns the thread's previous context for RestoreDpiContext: the serve loop reuses this
+    // thread for every later operation, which expects the awareness it started with.
+    public static IntPtr UsePhysicalPixels() {
+        try { return SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch (EntryPointNotFoundException) { return IntPtr.Zero; }
+    }
+
+    public static void RestoreDpiContext(IntPtr previous) {
+        if (previous == IntPtr.Zero) { return; }
+        try { SetThreadDpiAwarenessContext(previous); } catch (EntryPointNotFoundException) { }
     }
 
     public static List<WindowInfo> ListWindows() {
-        UsePhysicalPixels();
         var windows = new List<WindowInfo>();
         EnumWindows((hwnd, _) => {
             var info = Describe(hwnd);
@@ -1436,7 +1442,6 @@ function Resolve-OrcaDesktopTarget($Operation) {
     $windowId = Get-OrcaDesktopId $Operation.windowId "windowId"
     $handle = [IntPtr]$windowId
     if (-not [OrcaDesktopAppWin32]::IsTopLevel($handle)) { throw "window_not_found: window $windowId is gone" }
-    [OrcaDesktopAppWin32]::UsePhysicalPixels()
     $info = [OrcaDesktopAppWin32]::Describe($handle)
     if ($null -eq $info -or $info.ProcessId -ne $processId) { throw "window_not_found: window $windowId does not belong to pid $processId" }
     $process = Get-OrcaDesktopProcess $processId
@@ -1568,6 +1573,13 @@ function Invoke-OrcaDesktopInput($Operation) {
     "synthetic"
 }
 
+# Desktop App operations work in physical pixels (the captured frame's space) and put the thread's
+# DPI awareness back after, so later operations in this serve loop keep their coordinates.
+function Invoke-OrcaInPhysicalPixels([scriptblock]$Action) {
+    $previous = [OrcaDesktopAppWin32]::UsePhysicalPixels()
+    try { & $Action } finally { [OrcaDesktopAppWin32]::RestoreDpiContext($previous) }
+}
+
 function Invoke-OrcaOperation($Operation) {
     $includeScreenshot = -not [bool]$Operation.noScreenshot
     if ($Operation.tool -eq "handshake") {
@@ -1581,10 +1593,10 @@ function Invoke-OrcaOperation($Operation) {
         return [pscustomobject]@{ ok = $true; app = $list.app; windows = @($list.windows) }
     }
     if ($Operation.tool -eq "list_desktop_windows") {
-        return [pscustomobject]@{ ok = $true; desktopWindows = @(Get-OrcaDesktopWindows $Operation.excludePid) }
+        return [pscustomobject]@{ ok = $true; desktopWindows = @(Invoke-OrcaInPhysicalPixels { Get-OrcaDesktopWindows $Operation.excludePid }) }
     }
     if ($Operation.tool -eq "desktop_input") {
-        return [pscustomobject]@{ ok = $true; path = Invoke-OrcaDesktopInput $Operation }
+        return [pscustomobject]@{ ok = $true; path = Invoke-OrcaInPhysicalPixels { Invoke-OrcaDesktopInput $Operation } }
     }
     if ($Operation.tool -eq "get_app_state") {
         return [pscustomobject]@{ ok = $true; snapshot = New-OrcaSnapshot $Operation.app $includeScreenshot $Operation.windowId $Operation.windowIndex ([bool]$Operation.restoreWindow) }

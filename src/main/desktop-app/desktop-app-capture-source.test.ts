@@ -115,4 +115,23 @@ describe('desktop app capture source', () => {
     expect(mod.isDesktopAppWindowAuthorized(1, target)).toBe(false)
     expect(session.handler).toBeNull()
   })
+
+  it('drops everything when the renderer reloads or crashes', async () => {
+    const mod = await loadModule()
+    const session = fakeSession()
+    const renderer = fakeRenderer(1, session)
+    await mod.prepareDesktopAppCapture(renderer, target)
+
+    renderer.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true })
+    renderer.emit('did-start-navigation', { isMainFrame: false, isSameDocument: false })
+    expect(mod.isDesktopAppWindowAuthorized(1, target)).toBe(true)
+
+    renderer.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false })
+    expect(mod.isDesktopAppWindowAuthorized(1, target)).toBe(false)
+    expect(session.handler).toBeNull()
+
+    await mod.prepareDesktopAppCapture(renderer, target)
+    renderer.emit('render-process-gone', {}, { reason: 'crashed' })
+    expect(mod.isDesktopAppWindowAuthorized(1, target)).toBe(false)
+  })
 })

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { callDesktopScriptDesktopApp } from './desktop-script-desktop-app'
+import {
+  callDesktopScriptDesktopApp,
+  resetLinuxScrollRemaindersForTest
+} from './desktop-script-desktop-app'
 import {
   createDesktopScriptProviderClient,
   mockBridgeResponse,
@@ -16,6 +19,8 @@ const sampleWindow = {
 }
 
 describe('callDesktopScriptDesktopApp', () => {
+  afterEach(resetLinuxScrollRemaindersForTest)
+
   it('lists windows and excludes the Orca main process', async () => {
     const callBridge = vi.fn(async () => ({ ok: true, desktopWindows: [sampleWindow] }))
     await expect(
@@ -43,6 +48,41 @@ describe('callDesktopScriptDesktopApp', () => {
       windowId: 4242,
       input
     })
+  })
+
+  it('sends only whole X11 wheel steps on Linux and keeps the rest for the next frame', async () => {
+    const callBridge = vi.fn(async () => ({ ok: true, path: 'synthetic' }))
+    const scroll = (deltaY: number) =>
+      callDesktopScriptDesktopApp(
+        callBridge,
+        'desktopInput',
+        { pid: 77, windowId: 4242, input: { kind: 'scroll', x: 1, y: 1, deltaX: 0, deltaY } },
+        1,
+        'linux'
+      )
+    await scroll(20)
+    await scroll(20)
+    expect(callBridge).not.toHaveBeenCalled()
+    await scroll(20)
+    expect(callBridge).toHaveBeenCalledTimes(1)
+    expect(callBridge).toHaveBeenLastCalledWith(
+      expect.objectContaining({ input: expect.objectContaining({ deltaX: 0, deltaY: 50 }) })
+    )
+    await scroll(-20)
+    expect(callBridge).toHaveBeenCalledTimes(1)
+  })
+
+  it('forwards scroll deltas unchanged on Windows', async () => {
+    const callBridge = vi.fn(async () => ({ ok: true, path: 'synthetic' }))
+    const input = { kind: 'scroll', x: 1, y: 1, deltaX: 0, deltaY: 3 }
+    await callDesktopScriptDesktopApp(
+      callBridge,
+      'desktopInput',
+      { pid: 77, windowId: 4242, input },
+      1,
+      'windows'
+    )
+    expect(callBridge).toHaveBeenCalledWith(expect.objectContaining({ input }))
   })
 
   it('rejects malformed targets before reaching the runtime', async () => {
