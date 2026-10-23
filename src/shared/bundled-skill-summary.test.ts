@@ -9,7 +9,10 @@ import {
 } from './bundled-skill-plan'
 import {
   BUNDLED_SKILL_LEAVE_REASON_TEXT,
+  bundledSkillInstallAction,
+  bundledSkillInstallAgents,
   bundledSkillNudgeKey,
+  bundledSkillPlanState,
   bundledSkillOutcomeText,
   summarizeBundledSkillOutcomes,
   summarizeBundledSkillPlan
@@ -25,6 +28,7 @@ function plan(
 ): BundledSkillPlan {
   return {
     scope,
+    homeDirectory: '/home/u',
     planDigest: 'digest',
     skills: ops.map((skillOps, index) => ({
       name: `s${index}`,
@@ -76,6 +80,14 @@ describe('summarizeBundledSkillPlan', () => {
     expect(summarizeBundledSkillPlan(plan([[op('keep')]])).hasWork).toBe(false)
   })
 
+  it("treats someone else's same-named skill as theirs, not as attention", () => {
+    const other: BundledSkillOp = { ...op('leave'), reason: 'other', replaceable: true }
+    const edited: BundledSkillOp = { ...op('leave'), reason: 'edited', replaceable: true }
+    expect(bundledSkillPlanState(plan([[op('keep'), other]]).skills[0])).toBe('current')
+    expect(bundledSkillPlanState(plan([[op('keep'), edited]]).skills[0])).toBe('attention')
+    expect(bundledSkillPlanState(plan([[op('update'), other]]).skills[0])).toBe('update')
+  })
+
   it('has wording for every leave reason', () => {
     for (const reason of BUNDLED_SKILL_LEAVE_REASONS) {
       expect(BUNDLED_SKILL_LEAVE_REASON_TEXT[reason]).toMatch(/\S/u)
@@ -113,11 +125,11 @@ describe('summarizeBundledSkillOutcomes', () => {
     })
     expect(summary).toMatchObject({ ok: true, exitCode: 0 })
     expect(summary.skills.map((skill) => skill.line)).toEqual([
-      "Updated · 1 left alone: You've changed this copy",
-      "No change · 1 left alone: You've changed this copy"
+      'Updated · 1 skipped: Skill edited outside Orca',
+      'No change · 1 skipped: Skill edited outside Orca'
     ])
     expect(summary.skills[0].leftAlone).toEqual([
-      { path: '/leave', reason: "You've changed this copy" }
+      { path: '/leave', reason: 'Skill edited outside Orca', code: 'edited' }
     ])
     for (const status of ['changed', 'failed'] as const) {
       expect(
@@ -134,6 +146,61 @@ describe('summarizeBundledSkillOutcomes', () => {
       }).exitCode
     ).toBe(1)
   })
+  it('counts skipped skills once while retaining every skipped folder and reason', () => {
+    const summary = summarizeBundledSkillOutcomes({
+      scope: 'global',
+      skills: [
+        {
+          name: 'orca-cli',
+          status: 'ran',
+          ops: [
+            { path: '/shared/orca-cli', kind: 'update', status: 'done' },
+            { path: '/claude/orca-cli', kind: 'update', status: 'done' }
+          ]
+        },
+        {
+          name: 'orchestration',
+          status: 'ran',
+          ops: [{ path: '/shared/orchestration', kind: 'update', status: 'done' }]
+        },
+        {
+          name: 'computer-use',
+          status: 'ran',
+          ops: [
+            { path: '/shared', kind: 'leave', status: 'done', reason: 'edited' },
+            { path: '/claude', kind: 'leave', status: 'done', reason: 'shared-not-current' },
+            { path: '/cursor', kind: 'leave', status: 'done', reason: 'shared-not-current' }
+          ]
+        }
+      ]
+    })
+
+    expect(summary).toMatchObject({ ok: true, changedCount: 2, leftAloneCount: 1 })
+    expect(summary.skills[2].leftAlone.map((left) => left.path)).toEqual([
+      '/shared',
+      '/claude',
+      '/cursor'
+    ])
+    expect(summary.skills[2].line).toBe(
+      "No change · 1 skipped: Skill edited outside Orca; The shared copy isn't Orca's"
+    )
+  })
+})
+
+describe('bundledSkillInstallAgents', () => {
+  it('lists the agents newly given the skill, once each and sorted', () => {
+    const forAgents = (
+      kind: BundledSkillOpKind,
+      agents: BundledSkillOp['agents']
+    ): BundledSkillOp => ({ ...op(kind, `/${kind}/${agents.join(',')}`), agents })
+    const entries = plan([
+      [forAgents('write', ['codex']), forAgents('link', ['claude'])],
+      [forAgents('copy', ['cursor', 'claude']), forAgents('update', ['gemini'])],
+      [forAgents('keep', ['droid']), forAgents('leave', ['grok'])]
+    ]).skills
+    expect(bundledSkillInstallAgents(entries)).toEqual(['claude', 'codex', 'cursor'])
+    expect(bundledSkillInstallAgents([])).toEqual([])
+  })
 })
 
 describe('bundledSkillNudgeKey', () => {
@@ -143,5 +210,28 @@ describe('bundledSkillNudgeKey', () => {
     )
     expect(bundledSkillNudgeKey('local', plan([[op('link')]]))).toBeNull()
     expect(bundledSkillNudgeKey('local', plan([[op('update')]], 'workspace'))).toBeNull()
+  })
+})
+
+describe('bundledSkillInstallAction', () => {
+  it('runs work, offers Replace only for replaceable copies, else nothing', () => {
+    expect(bundledSkillInstallAction(plan([[op('keep'), op('link')]]))).toEqual({ kind: 'run' })
+    const edited = { ...op('leave', '/a'), reason: 'edited' as const, replaceable: true }
+    const unwritable = { ...op('leave', '/b'), reason: 'unwritable' as const }
+    expect(bundledSkillInstallAction(plan([[op('keep'), edited, unwritable]]))).toEqual({
+      kind: 'replace',
+      paths: ['/a']
+    })
+    expect(bundledSkillInstallAction(plan([[op('keep'), unwritable]]))).toEqual({
+      kind: 'attention'
+    })
+  })
+
+  it.each(['unwritable', 'busy'] as const)('needs attention when absent work is %s', (reason) => {
+    expect(bundledSkillInstallAction(plan([[{ ...op('leave'), reason }]]))).toEqual({
+      kind: 'attention'
+    })
+    expect(bundledSkillInstallAction(plan([[op('keep')]]))).toEqual({ kind: 'none' })
+    expect(bundledSkillInstallAction(plan([[]]))).toEqual({ kind: 'attention' })
   })
 })
