@@ -1531,7 +1531,12 @@ def desktop_app_text(session, record, text):
     for character in str(text):
         if character == "\r":
             continue
-        keysym = session.x.XStringToKeysym(b"Return") if character == "\n" else desktop_app_keysym_for_char(character)
+        if character == "\n":
+            keysym = session.x.XStringToKeysym(b"Return")
+        elif character == "\t":
+            keysym = session.x.XStringToKeysym(b"Tab")
+        else:
+            keysym = desktop_app_keysym_for_char(character)
         keysyms.append(keysym)
     # Why check first: stopping halfway would leave a partly typed string in the target app.
     group = session.keyboard_group()
