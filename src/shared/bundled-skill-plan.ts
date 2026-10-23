@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { SkillInstallProviderId } from './skill-install-providers'
 
 // Frozen per capability version: a client renders a value it does not know as "Needs attention".
@@ -94,6 +95,8 @@ export type BundledSkillPlanEntry = {
 
 export type BundledSkillPlan = {
   scope: 'global' | 'workspace'
+  /** The planned host's home, so surfaces can show `~` paths; not part of the digest. */
+  homeDirectory: string
   skills: readonly BundledSkillPlanEntry[]
   /** Canonical digest of `skills`; execute applies only a plan that still hashes to it. */
   planDigest: string
@@ -122,3 +125,33 @@ export type BundledSkillInstallResult = {
   scope: 'global' | 'workspace'
   skills: readonly BundledSkillOutcome[]
 }
+
+const BundledSkillForceSchema = z.array(z.string().min(1).max(4096)).max(256)
+
+/**
+ * What the app asks a host to plan: its own global homes, Orca's installed skills only.
+ * Frozen with `skills.bundled-orca.v1`: the schema is strict, so an older host rejects any
+ * new field; a field needs a new capability.
+ */
+export const BundledSkillPlanRequestSchema = z.strictObject({
+  force: BundledSkillForceSchema.optional(),
+  /**
+   * Install these bundled skills for the host's agents, like `orca skills install <names>`.
+   * Absent: update only what is already installed. The host rejects a name it does not ship.
+   */
+  names: z
+    .array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u))
+    .min(1)
+    .max(64)
+    .optional()
+})
+export type BundledSkillPlanRequest = z.infer<typeof BundledSkillPlanRequestSchema>
+
+const PlanDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u)
+
+/** Runs the plan `request` produced, identified by its digest; the ops are never re-sent. */
+export const BundledSkillExecuteRequestSchema = z.strictObject({
+  planDigest: PlanDigestSchema,
+  request: BundledSkillPlanRequestSchema
+})
+export type BundledSkillExecuteRequest = z.infer<typeof BundledSkillExecuteRequestSchema>
