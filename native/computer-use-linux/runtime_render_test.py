@@ -526,6 +526,12 @@ class DesktopAppPointerTest(unittest.TestCase):
             runtime.desktop_app_scroll(session, self.record, {"x": 10, "y": 10, "deltaX": 0, "deltaY": 120})
         self.assertEqual(session.sent, [])
 
+    def test_keys_fail_loudly_when_the_top_level_window_selects_no_key_events(self):
+        session = FakePointerSession({})
+        with self.assertRaisesRegex(RuntimeError, "unsupported capability"):
+            runtime.desktop_app_send_key(session, self.record, 0x71, 0, group=0)
+        self.assertEqual(session.sent, [])
+
 
 class DesktopAppKeycodeTest(unittest.TestCase):
     def session(self, levels, groups=None, keycodes=None):

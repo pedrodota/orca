@@ -1087,6 +1087,7 @@ DESKTOP_APP_PIXELS_PER_SCROLL_STEP = 50
 X_KEY_PRESS, X_KEY_RELEASE, X_BUTTON_PRESS, X_BUTTON_RELEASE, X_MOTION_NOTIFY = 2, 3, 4, 5, 6
 X_SHIFT_MASK, X_CONTROL_MASK, X_MOD1_MASK = 1, 4, 8
 X_XKB_USE_CORE_KBD = 0x0100
+X_KEY_PRESS_MASK = 1
 X_KEY_EVENT_MASKS = 1 | 2
 X_BUTTON_PRESS_MASK = 1 << 2
 X_BUTTON_EVENT_MASKS = X_BUTTON_PRESS_MASK | (1 << 3)
@@ -1507,6 +1508,12 @@ def desktop_app_keycode(session, keysym, group=0):
 
 
 def desktop_app_send_key(session, record, keysym, state, group=None):
+    # Why: XSendEvent does not reach a child that alone selects key events, so the key would
+    # vanish while the call reported success.
+    if not session.event_masks(record["windowId"]) & X_KEY_PRESS_MASK:
+        raise RuntimeError(
+            "unsupported capability: this app ignores background typing on X11; use it in its own window"
+        )
     group = session.keyboard_group() if group is None else group
     resolved = desktop_app_keycode(session, keysym, group)
     if resolved is None:
