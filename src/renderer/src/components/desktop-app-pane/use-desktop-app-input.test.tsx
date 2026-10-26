@@ -29,9 +29,11 @@ function renderInput() {
   return renderHook(() => useDesktopAppInput(target, videoRef, () => undefined))
 }
 
-function mouseEvent(type: 'pointer' | 'mouse', detail: number) {
+type FakeMouseEvent = React.PointerEvent<HTMLElement> & React.WheelEvent<HTMLElement>
+
+function mouseEvent(type: 'pointer' | 'mouse', detail: number): FakeMouseEvent {
   const currentTarget = videoElement()
-  return {
+  const event = {
     clientX: 10,
     clientY: 20,
     button: 0,
@@ -42,6 +44,8 @@ function mouseEvent(type: 'pointer' | 'mouse', detail: number) {
     deltaMode: 0,
     type
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the hook reads only the pointer, wheel and target fields set above.
+  return event as unknown as FakeMouseEvent
 }
 
 describe('useDesktopAppInput', () => {
@@ -67,7 +71,7 @@ describe('useDesktopAppInput', () => {
 
   it('drops a scroll queued for the next frame when the view unmounts', () => {
     const { result, unmount } = renderInput()
-    result.current.onWheel(mouseEvent('mouse', 0) as unknown as React.WheelEvent<HTMLElement>)
+    result.current.onWheel(mouseEvent('mouse', 0))
     unmount()
     frames.forEach((frame) => frame(0))
     expect(sendInput).not.toHaveBeenCalled()
@@ -75,10 +79,8 @@ describe('useDesktopAppInput', () => {
 
   it('sends the click count the mouseup reports', () => {
     const { result } = renderInput()
-    result.current.onPointerDown(
-      mouseEvent('pointer', 0) as unknown as React.PointerEvent<HTMLElement>
-    )
-    result.current.onMouseUp(mouseEvent('mouse', 2) as unknown as React.MouseEvent<HTMLElement>)
+    result.current.onPointerDown(mouseEvent('pointer', 0))
+    result.current.onMouseUp(mouseEvent('mouse', 2))
     expect(sendInput).toHaveBeenCalledWith({
       windowId: 1,
       pid: 42,

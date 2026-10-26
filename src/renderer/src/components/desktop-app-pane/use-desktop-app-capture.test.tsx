@@ -8,7 +8,7 @@ const prepareCapture = vi.fn(async () => ({ sourceId: 'window:1:0' }))
 const releaseCapture = vi.fn(async () => undefined)
 
 function fakeStream() {
-  const track = { stop: vi.fn(), addEventListener: vi.fn() }
+  const track = Object.assign(new EventTarget(), { stop: vi.fn() })
   return { getTracks: () => [track], getVideoTracks: () => [track], track }
 }
 
