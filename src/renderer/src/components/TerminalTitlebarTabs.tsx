@@ -7,8 +7,7 @@ import { isLiveSurfaceContentType } from '../../../shared/tab-types'
 
 const EMPTY_TERMINAL_TABS: TerminalTab[] = []
 
-// Why: keeps title-only tab updates a leaf subscription so the Terminal root,
-// which reads the topology projection, does not re-render on every rename.
+// Isolate title subscriptions so renames do not rerender the topology-owning Terminal root.
 function LiveTerminalTabBar(
   props: Omit<React.ComponentProps<typeof TabBar>, 'tabs'>
 ): React.JSX.Element {

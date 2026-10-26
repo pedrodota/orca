@@ -38,7 +38,6 @@ export function useTabGroupCreationCommands({
     (state) => state.openNewTerminalTabInActiveWorkspace
   )
 
-  // Why: these stay unmemoized plain lambdas — the original built them inline in the returned commands object.
   return {
     newBrowserTab: () => {
       void openNewBrowserTabInActiveWorkspace(groupId).catch((error) => {
@@ -51,7 +50,6 @@ export function useTabGroupCreationCommands({
             void ensureSimulatorTab(worktreeId, { surfacePane: true })
             return
           }
-          // Why: mobile simulators are most useful beside the current tab group.
           void openMobileEmulatorTab(worktreeId, {
             placement: 'rightSplit',
             targetGroupId: groupId
