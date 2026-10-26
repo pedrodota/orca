@@ -80,8 +80,9 @@ function mapNonMacKeyEvent(event: DesktopAppKeyEvent): DesktopAppInput | null {
   if (event.ctrlKey && named === 'tab') {
     return null
   }
-  if (event.ctrlKey || (event.altKey && (named || lower))) {
-    return chord(event, (named ?? lower) as string)
+  const base = named ?? lower
+  if (base && (event.ctrlKey || event.altKey)) {
+    return chord(event, base)
   }
   return plainKey(event, named)
 }

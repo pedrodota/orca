@@ -17,12 +17,16 @@ function fakeRenderer(
   id: number,
   session: { setDisplayMediaRequestHandler: (h: Handler) => void }
 ) {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the module under test reads only id, session and lifecycle events, which the EventEmitter provides.
   return Object.assign(new EventEmitter(), { id, session }) as unknown as Electron.WebContents
 }
 
 function fakeSession() {
-  const session = {
-    handler: null as Handler,
+  const session: {
+    handler: Handler
+    setDisplayMediaRequestHandler: (handler: Handler) => void
+  } = {
+    handler: null,
     setDisplayMediaRequestHandler: vi.fn((handler: Handler) => {
       session.handler = handler
     })

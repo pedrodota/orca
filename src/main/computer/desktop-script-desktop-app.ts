@@ -24,7 +24,7 @@ export async function callDesktopScriptDesktopApp(
   orcaPid: number = process.ppid,
   platform: DesktopScriptPlatform | null = null
 ): Promise<unknown> {
-  const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {}
+  const record = isRecord(params) ? params : {}
   if (method === 'listDesktopWindows') {
     // Why: the sidecar is forked by Orca main, so its parent pid owns Orca's own windows,
     // which must never be offered as a target (the pane would capture itself).
@@ -33,10 +33,10 @@ export async function callDesktopScriptDesktopApp(
   }
   const pid = positiveInteger(record.pid, 'pid')
   const windowId = positiveInteger(record.windowId, 'windowId')
-  if (!record.input || typeof record.input !== 'object') {
+  if (!isRecord(record.input)) {
     throw new RuntimeClientError('invalid_argument', 'input is required')
   }
-  let input = record.input as Record<string, unknown>
+  let input = record.input
   if (platform === 'linux' && input.kind === 'scroll') {
     const whole = takeWholeLinuxScrollSteps(`${pid}:${windowId}`, input)
     if (!whole) {
@@ -82,6 +82,10 @@ function takeWholeLinuxScrollSteps(
 /** Test seam: forgets every kept scroll remainder. */
 export function resetLinuxScrollRemaindersForTest(): void {
   linuxScrollRemainders.clear()
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function positiveInteger(value: unknown, name: string): number {

@@ -97,6 +97,7 @@ export function useDesktopAppCapture(
         release()
       }
       cancelled = true
+      stream?.getVideoTracks()[0]?.removeEventListener('ended', onTrackEnded)
       stream?.getTracks().forEach((t) => t.stop())
     }
   }, [isActive, windowId, pid])
