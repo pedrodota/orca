@@ -41,6 +41,7 @@ export function useDesktopAppCapture(
     let cancelled = false
     let prepared = false
     let stream: MediaStream | null = null
+    let track: MediaStreamTrack | undefined
     // Why: main keeps the window input-authorized until the pane that prepared it lets go.
     const release = (): void => {
       void api.releaseCapture({ windowId, pid }).catch(() => undefined)
@@ -82,7 +83,8 @@ export function useDesktopAppCapture(
           return
         }
         stream = next
-        next.getVideoTracks()[0]?.addEventListener('ended', onTrackEnded)
+        track = next.getVideoTracks()[0]
+        track?.addEventListener('ended', onTrackEnded)
         setState({ stream: next, error: null })
       } catch (err) {
         if (!cancelled) {
@@ -97,7 +99,7 @@ export function useDesktopAppCapture(
         release()
       }
       cancelled = true
-      stream?.getVideoTracks()[0]?.removeEventListener('ended', onTrackEnded)
+      track?.removeEventListener('ended', onTrackEnded)
       stream?.getTracks().forEach((t) => t.stop())
     }
   }, [isActive, windowId, pid])
