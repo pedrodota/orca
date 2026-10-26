@@ -1,6 +1,7 @@
 import type { NativeDesktopAppMethod } from './macos-native-provider-contract'
 import type { BridgeRequest, BridgeResponse } from './desktop-script-provider-types'
 import { RuntimeClientError } from './runtime-client-error'
+import { isRecord } from '../desktop-app/desktop-app-window-list'
 import type { DesktopScriptPlatform } from './desktop-script-provider-paths'
 
 type CallBridge = (request: BridgeRequest) => Promise<BridgeResponse>
@@ -82,10 +83,6 @@ function takeWholeLinuxScrollSteps(
 /** Test seam: forgets every kept scroll remainder. */
 export function resetLinuxScrollRemaindersForTest(): void {
   linuxScrollRemainders.clear()
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
 
 function positiveInteger(value: unknown, name: string): number {

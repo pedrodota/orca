@@ -38,6 +38,7 @@ test.describe('Desktop App tab', () => {
     orcaPage,
     electronApp
   }) => {
+    // Why: it opens a real Mac window, waits for live capture and drives agent scrolls through the CLI.
     test.setTimeout(180_000)
     const userDataDir = await electronApp.evaluate(({ app }) => app.getPath('userData'))
     const agentScroll = (x: number, y: number) =>

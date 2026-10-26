@@ -3,6 +3,7 @@ import type { ComputerActionResult } from '../../shared/runtime-types'
 import type { DesktopAppAgentActivity, DesktopAppAgentBlock } from '../../shared/desktop-app-types'
 import { parseDesktopAppSelector, selectorNamesApp } from '../../shared/desktop-app-selector'
 import { isRecord } from './desktop-app-window-list'
+import { isProcessAlive } from '../daemon/daemon-process-inspection'
 import { processStartIdentity } from './desktop-app-process-identity'
 import { RuntimeClientError } from '../computer/runtime-client-error'
 import { COMPUTER_ERROR_CODES, type ComputerAppInfo } from '../../shared/computer-use-runtime-types'
@@ -109,17 +110,6 @@ function sameApp(block: DesktopAppAgentBlock, app: ComputerAppInfo): boolean {
   return block.bundleId !== null && app.bundleId
     ? block.bundleId === app.bundleId
     : block.appName === app.name
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    // Signal 0 only probes the process; it works the same on macOS, Linux and Windows.
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    // EPERM: the process exists but belongs to another user.
-    return (error as NodeJS.ErrnoException).code === 'EPERM'
-  }
 }
 
 type BlockCheck = { blocked: DesktopAppAgentBlock | null; pinnedPid: number | null }

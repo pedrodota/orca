@@ -84,24 +84,14 @@ export function DesktopAppAgentOverlay({
           </span>
           <span aria-hidden="true" className="h-6 w-px bg-agent-control-surface-foreground/15" />
           {stopped ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onAllow}
-              className="font-semibold hover:bg-agent-control-surface-foreground/5 hover:text-inherit"
-            >
+            <Button variant="agent-control-pill" size="sm" onClick={onAllow}>
               {translate(
                 'auto.components.desktop.app.pane.DesktopAppAgentOverlay.7a502d7891',
                 'Allow again'
               )}
             </Button>
           ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onStop}
-              className="font-semibold hover:bg-agent-control-surface-foreground/5 hover:text-inherit"
-            >
+            <Button variant="agent-control-pill" size="sm" onClick={onStop}>
               <CircleStop className="size-4" aria-hidden="true" />
               {translate(
                 'auto.components.desktop.app.pane.DesktopAppAgentOverlay.371b67dea5',
